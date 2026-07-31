@@ -1,0 +1,15 @@
+{
+  "out_dir": "evaluate_runs/smile_zeroshot_eval_20260427_055722",
+  "data": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate/data_dir/smile_1k.jsonl",
+  "runs": {
+    "self_cognition": {
+      "bleu-1": 30.56442461338147,
+      "bleu-2": 15.143487525329327,
+      "bleu-3": 8.59580457571906,
+      "bleu-4": 5.3083785919454085,
+      "rouge-1": 31.521866315695835,
+      "rouge-2": 9.84406176196714,
+      "rouge-l": 24.028447281955696
+    }
+  }
+}

@@ -1,0 +1,115 @@
+:root {
+  --color-bg-page: #ecfdf5;
+  --color-bg-card: #ffffff;
+  --color-bg-input: #f9fafb;
+  --color-bg-thinking: #f0fdfa99;
+
+  --color-primary: #14b8a6;
+  --color-primary-hover: #0d9488;
+  --color-primary-text: #0f766e;
+
+  --color-danger: #f43f5e;
+  --color-danger-soft: #fecdd3;
+  --color-danger-text: #e11d48;
+
+  --color-text: #334155;
+  --color-text-soft: #64748b;
+  --color-text-faint: #94a3b8;
+
+  --color-border-card: #ccfbf1;
+  --color-border-input: #e5e7eb;
+
+  --radius-card: 1rem;
+  --radius-btn: 0.75rem;
+
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-btn: 0 4px 12px rgba(20, 184, 166, 0.2);
+}
+
+.md-content p {
+  margin: 0.25rem 0;
+}
+.md-content ul,
+.md-content ol {
+  margin: 0.4rem 0;
+  padding-left: 1.25rem;
+}
+.md-content li {
+  margin: 0.15rem 0;
+}
+.md-content code {
+  background: rgba(15, 23, 42, 0.06);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.35rem;
+  font-size: 0.95em;
+}
+.md-content pre {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.md-content pre code {
+  background: transparent;
+  padding: 0;
+}
+.md-content strong {
+  font-weight: 600;
+}
+.md-content blockquote {
+  border-left: 3px solid #cbd5e1;
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: #475569;
+}
+.md-content .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.35rem 0;
+  margin: 0.5rem 0;
+}
+
+.thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #0f766e;
+  font-style: normal;
+  user-select: none;
+}
+.thinking-indicator .thinking-label {
+  letter-spacing: 0.02em;
+}
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+.thinking-dots span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: #14b8a6;
+  opacity: 0.35;
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes thinking-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-0.28rem);
+    opacity: 1;
+  }
+}

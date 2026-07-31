@@ -1,0 +1,67 @@
+{
+  "soulharbor_pt": {
+    "file_name": "pt.jsonl",
+    "columns": {
+      "prompt": "text"
+    }
+  },
+  "soulharbor_mixed_campus_sft": {
+    "file_name": "sft_instruction.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "system": "system",
+      "tools": "tools"
+    }
+  },
+  "soulharbor_self_cognition_sft": {
+    "file_name": "sft_self_cognition.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "tools": "tools"
+    }
+  },
+  "soulharbor_dpo_soulchat_exclusive_minimax_3k": {
+    "file_name": "dpo.jsonl",
+    "formatting": "sharegpt",
+    "ranking": true,
+    "columns": {
+      "messages": "conversations",
+      "chosen": "chosen",
+      "rejected": "rejected"
+    }
+  },
+  "soulharbor_extraction_sft": {
+    "file_name": "extraction_train.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "messages"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant",
+      "observation_tag": "tool",
+      "function_tag": "tool_call",
+      "system_tag": "system"
+    }
+  },
+  "soulharbor_extraction_eval": {
+    "file_name": "extraction_valid.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "messages"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant",
+      "observation_tag": "tool",
+      "function_tag": "tool_call",
+      "system_tag": "system"
+    }
+  }
+}

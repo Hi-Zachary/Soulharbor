@@ -1,0 +1,10 @@
+{
+  "created_at": "2026-04-26T12:55:56",
+  "smile_data_dir": "/public/home/shijian/zachary/ZacPro/smile-main/data",
+  "n": 1000,
+  "seed": 20260426,
+  "max_turns": 5,
+  "scanned_files": 55165,
+  "skipped": 1,
+  "out": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate/data_dir/smile_1k.jsonl"
+}

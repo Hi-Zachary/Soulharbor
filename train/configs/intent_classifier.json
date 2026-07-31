@@ -1,0 +1,15 @@
+{
+  "_comment": "意图分类器训练默认超参（MacBERT base / intent_dataset_v4）。脚本: train/scripts/classifiers/run_train_intent_base_v4.sh / build_intent_dataset_v4.py。",
+  "model_name_or_path": "models/encoders/chinese-macbert-base",
+  "train_file": "train/data/classifiers/train/intent/intent_train.jsonl",
+  "validation_file": "train/data/classifiers/train/intent/intent_valid.jsonl",
+  "test_file": "train/data/classifiers/train/intent/intent_test.jsonl",
+  "output_dir": "outputs/classifiers/intent",
+  "max_length": 512,
+  "learning_rate": 2e-05,
+  "num_train_epochs": 1,
+  "per_device_train_batch_size": 16,
+  "per_device_eval_batch_size": 32,
+  "seed": 42,
+  "label_key": "is_consult"
+}

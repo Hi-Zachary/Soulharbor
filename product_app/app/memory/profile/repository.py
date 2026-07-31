@@ -1,0 +1,206 @@
+"""SQLite helpers for consent profile rows."""
+from __future__ import annotations
+
+import json
+import sqlite3
+import time
+import uuid
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Iterator, List, Optional, Sequence
+
+from product_app.app.memory.models import PendingProfile, ProfileItem
+
+
+class ProfileStore:
+    def __init__(self, db_path: str | Path) -> None:
+        self.path = Path(db_path)
+
+    @contextmanager
+    def _conn(self) -> Iterator[sqlite3.Connection]:
+        conn = sqlite3.connect(str(self.path), timeout=30, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    def create(
+        self,
+        *,
+        user_id: int,
+        content: str,
+        origin: str,
+        source_message_ids: Sequence[int],
+    ) -> ProfileItem:
+        profile_id = uuid.uuid4().hex
+        now = int(time.time())
+        cleaned = content.strip()
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO support_profile_items"
+                "(id, user_id, content, origin, status, created_at, updated_at) "
+                "VALUES(?,?,?,?, 'active', ?, ?)",
+                (profile_id, int(user_id), cleaned, origin, now, now),
+            )
+            for mid in source_message_ids:
+                conn.execute(
+                    "INSERT OR IGNORE INTO support_profile_sources(profile_id, message_id) "
+                    "VALUES(?,?)",
+                    (profile_id, int(mid)),
+                )
+        return ProfileItem(
+            id=profile_id,
+            user_id=int(user_id),
+            content=cleaned,
+            origin=origin,
+            source_message_ids=[int(x) for x in source_message_ids],
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+
+    def list_active(self, user_id: int) -> List[ProfileItem]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM support_profile_items "
+                "WHERE user_id=? AND status='active' ORDER BY updated_at DESC",
+                (int(user_id),),
+            ).fetchall()
+            items: List[ProfileItem] = []
+            for row in rows:
+                sources = conn.execute(
+                    "SELECT message_id FROM support_profile_sources WHERE profile_id=?",
+                    (str(row["id"]),),
+                ).fetchall()
+                items.append(
+                    ProfileItem(
+                        id=str(row["id"]),
+                        user_id=int(row["user_id"]),
+                        content=str(row["content"]),
+                        origin=str(row["origin"]),
+                        source_message_ids=[int(s["message_id"]) for s in sources],
+                        status=str(row["status"]),
+                        created_at=int(row["created_at"]),
+                        updated_at=int(row["updated_at"]),
+                    )
+                )
+            return items
+
+    def search(self, user_id: int, query: str, limit: int = 5) -> List[ProfileItem]:
+        items = self.list_active(user_id)
+        q = (query or "").strip()
+        if not q:
+            return items[:limit]
+        ranked = sorted(
+            ((sum(1 for ch in q if ch in item.content), item) for item in items),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        matched = [item for score, item in ranked if score > 0]
+        return (matched or items)[:limit]
+
+    def soft_delete(self, user_id: int, profile_id: str) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE support_profile_items SET status='deleted', updated_at=? "
+                "WHERE id=? AND user_id=?",
+                (int(time.time()), str(profile_id), int(user_id)),
+            )
+            return int(cur.rowcount or 0) > 0
+
+    def soft_delete_matching(self, user_id: int, keyword: str) -> int:
+        key = (keyword or "").strip()
+        if not key:
+            return 0
+        removed = 0
+        now = int(time.time())
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, content FROM support_profile_items "
+                "WHERE user_id=? AND status='active'",
+                (int(user_id),),
+            ).fetchall()
+            for row in rows:
+                body = str(row["content"])
+                if key in body or body in key:
+                    conn.execute(
+                        "UPDATE support_profile_items SET status='deleted', updated_at=? "
+                        "WHERE id=?",
+                        (now, str(row["id"])),
+                    )
+                    removed += 1
+        return removed
+
+    def update_content(self, user_id: int, profile_id: str, content: str) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE support_profile_items SET content=?, updated_at=? "
+                "WHERE id=? AND user_id=? AND status='active'",
+                (content.strip(), int(time.time()), str(profile_id), int(user_id)),
+            )
+            return int(cur.rowcount or 0) > 0
+
+    def add_pending(
+        self, *, user_id: int, content: str, source_message_ids: Sequence[int]
+    ) -> PendingProfile:
+        pending_id = uuid.uuid4().hex
+        now = int(time.time())
+        cleaned = content.strip()
+        sources = [int(x) for x in source_message_ids]
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM support_profile_pending WHERE user_id=?", (int(user_id),)
+            )
+            conn.execute(
+                "INSERT INTO support_profile_pending"
+                "(id, user_id, content, source_json, created_at) VALUES(?,?,?,?,?)",
+                (pending_id, int(user_id), cleaned, json.dumps(sources), now),
+            )
+        return PendingProfile(
+            id=pending_id,
+            user_id=int(user_id),
+            content=cleaned,
+            source_message_ids=sources,
+            created_at=now,
+        )
+
+    def pop_pending(self, user_id: int) -> Optional[PendingProfile]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM support_profile_pending WHERE user_id=? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (int(user_id),),
+            ).fetchone()
+            if not row:
+                return None
+            conn.execute(
+                "DELETE FROM support_profile_pending WHERE id=?", (str(row["id"]),)
+            )
+            sources = json.loads(str(row["source_json"]) or "[]")
+            return PendingProfile(
+                id=str(row["id"]),
+                user_id=int(row["user_id"]),
+                content=str(row["content"]),
+                source_message_ids=[int(x) for x in sources],
+                created_at=int(row["created_at"]),
+            )
+
+    def peek_pending(self, user_id: int) -> Optional[PendingProfile]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM support_profile_pending WHERE user_id=? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (int(user_id),),
+            ).fetchone()
+            if not row:
+                return None
+            sources = json.loads(str(row["source_json"]) or "[]")
+            return PendingProfile(
+                id=str(row["id"]),
+                user_id=int(row["user_id"]),
+                content=str(row["content"]),
+                source_message_ids=[int(x) for x in sources],
+                created_at=int(row["created_at"]),
+            )

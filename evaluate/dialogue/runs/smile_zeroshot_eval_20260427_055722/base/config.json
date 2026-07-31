@@ -1,0 +1,20 @@
+{
+  "data": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate/data_dir/smile_1k.jsonl",
+  "base": "models/Qwen3-14B",
+  "adapter": "",
+  "out_dir": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate_runs/smile_zeroshot_eval_20260427_055722/base",
+  "limit": 0,
+  "batch_size": 16,
+  "warmup_batch_size": 4,
+  "max_input_len": 1536,
+  "max_new_tokens": 1024,
+  "do_sample": true,
+  "temperature": 0.95,
+  "top_p": 0.75,
+  "repetition_penalty": 1.0,
+  "eos_token_id": 0,
+  "device": "cuda:1",
+  "attn": "sdpa",
+  "load_in_4bit": true,
+  "enable_thinking": false
+}

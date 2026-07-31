@@ -1,0 +1,50 @@
+### SoulHarbor DPO（线上 chat LoRA 主产物）
+### 对应脚本: train/scripts/llamafactory/run/run_dpo_synth_minimax.sh
+### 必须提供: adapter_name_or_path = 自我认知 SFT adapter
+### 数据: soulharbor_dpo_soulchat_exclusive_minimax_3k（dataset_info.json）
+### 落盘产物: saves/qwen14b/lora/dpo_synth_20260425_060332
+
+### model
+model_name_or_path: models/Qwen3-14B
+adapter_name_or_path: archive/weights/lora/sft_self_cognition_20260422_112858
+
+### method
+stage: dpo
+pref_loss: sigmoid
+pref_beta: 0.1
+dpo_label_smoothing: 0.0
+do_train: true
+finetuning_type: lora
+lora_target: all
+lora_rank: 8
+lora_alpha: 16
+quantization_bit: 4
+
+### dataset
+dataset: soulharbor_dpo_soulchat_exclusive_minimax_3k
+dataset_dir: train/data/llm
+template: qwen3_nothink
+enable_thinking: false
+cutoff_len: 2048
+preprocessing_num_workers: 4
+overwrite_cache: true
+
+### output
+output_dir: saves/qwen14b/lora/dpo_synth
+overwrite_output_dir: true
+logging_steps: 10
+save_steps: 200
+save_strategy: steps
+plot_loss: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 5.0e-6
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_steps: 20
+fp16: true
+flash_attn: sdpa
+gradient_checkpointing: true
+seed: 42

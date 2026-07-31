@@ -1,0 +1,40 @@
+{
+  "created_at": "2026-04-26T09:27:43",
+  "soulchat_json": "/public/home/shijian/zachary/ZacPro/SoulHarbor/data/SoulChatCorpus/SoulChatCorpus-sft-multi-Turn.json",
+  "sft_soulchat_jsonl": "/public/home/shijian/zachary/ZacPro/SoulHarbor/llama_factory/data/sft_soulchat_sharegpt.jsonl",
+  "dpo_soulchat_jsonl": "/public/home/shijian/zachary/ZacPro/SoulHarbor/llama_factory/data/dpo_soulchat_exclusive_minimax_3k_sharegpt.jsonl",
+  "seed": 20260426,
+  "n": 1000,
+  "max_turns": 5,
+  "max_msgs_sig": 6,
+  "per_topic_reservoir": 300,
+  "scan_limit": 0,
+  "seen_topic_counts": {
+    "成长": 168,
+    "人际": 149,
+    "治疗": 143,
+    "行为": 1,
+    "家庭": 2,
+    "自我": 3,
+    "婚恋": 167,
+    "心理学知识": 32,
+    "职场": 167,
+    "未明确": 167,
+    "社会": 1
+  },
+  "unseen_topic_counts": {
+    "情绪": 24,
+    "社会": 6,
+    "未明确": 113,
+    "人际": 133,
+    "治疗": 133,
+    "成长": 132,
+    "家庭": 8,
+    "婚恋": 132,
+    "自我": 55,
+    "职场": 132,
+    "心理学知识": 132
+  },
+  "seen_out": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate/data_dir/soulchat_seen_1k.jsonl",
+  "unseen_out": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate/data_dir/soulchat_unseen_1k.jsonl"
+}

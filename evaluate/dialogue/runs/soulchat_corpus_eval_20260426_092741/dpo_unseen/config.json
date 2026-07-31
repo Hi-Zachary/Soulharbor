@@ -1,0 +1,19 @@
+{
+  "data": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate/data_dir/soulchat_unseen_1k.jsonl",
+  "base": "models/Qwen3-14B",
+  "adapter": "/public/home/shijian/zachary/ZacPro/SoulHarbor/saves/qwen14b/lora/dpo_synth_20260425_060332",
+  "out_dir": "/public/home/shijian/zachary/ZacPro/SoulHarbor/evaluate_runs/soulchat_corpus_eval_20260426_092741/dpo_unseen",
+  "limit": 0,
+  "batch_size": 32,
+  "max_input_len": 1536,
+  "max_new_tokens": 512,
+  "do_sample": true,
+  "temperature": 0.95,
+  "top_p": 0.75,
+  "repetition_penalty": 1.0,
+  "eos_token_id": 151645,
+  "device": "cuda:1",
+  "attn": "sdpa",
+  "load_in_4bit": true,
+  "enable_thinking": false
+}

@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SoulHarbor - 你的心理支持助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+    <style>
+      .md-content p { margin: 0.25rem 0; }
+      .md-content ul, .md-content ol { margin: 0.4rem 0; padding-left: 1.25rem; }
+      .md-content li { margin: 0.15rem 0; }
+      .md-content code {
+        background: rgba(15, 23, 42, 0.06);
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.35rem;
+        font-size: 0.95em;
+      }
+      .md-content pre {
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.75rem;
+        padding: 0.75rem 0.9rem;
+        overflow-x: auto;
+        margin: 0.5rem 0;
+      }
+      .md-content pre code {
+        background: transparent;
+        padding: 0;
+      }
+      .md-content strong { font-weight: 600; }
+      .md-content blockquote {
+        border-left: 3px solid #cbd5e1;
+        padding-left: 0.75rem;
+        margin: 0.5rem 0;
+        color: #475569;
+      }
+      .md-content .katex-display {
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 0.35rem 0;
+        margin: 0.5rem 0;
+      }
+      .thinking-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        color: #0f766e;
+        font-style: normal;
+        user-select: none;
+      }
+      .thinking-indicator .thinking-label {
+        letter-spacing: 0.02em;
+      }
+      .thinking-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+      }
+      .thinking-dots span {
+        width: 0.4rem;
+        height: 0.4rem;
+        border-radius: 9999px;
+        background: #14b8a6;
+        opacity: 0.35;
+        animation: thinking-bounce 1.2s ease-in-out infinite;
+      }
+      .thinking-dots span:nth-child(2) { animation-delay: 0.18s; }
+      .thinking-dots span:nth-child(3) { animation-delay: 0.36s; }
+      @keyframes thinking-bounce {
+        0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+        40% { transform: translateY(-0.28rem); opacity: 1; }
+      }
+    </style>
+  </head>
+  <body class="bg-emerald-50 text-slate-800 font-sans min-h-screen flex flex-col">
+    <div class="max-w-6xl w-full mx-auto px-4 py-6 flex-1 flex flex-col">
+      <!-- 头部 -->
+      <div class="flex items-center justify-between gap-3 mb-4">
+        <div>
+          <div class="text-2xl font-bold text-teal-700">SoulHarbor</div>
+          <div class="text-sm text-teal-600/80 font-medium">校园心理支持助手</div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-sm text-slate-600 font-medium">你好，{{ username }}</div>
+          <button id="btn-memory" class="px-4 py-2 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-slate-600 text-sm font-medium shadow-sm transition-colors">隐私</button>
+          <button id="btn-new" class="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-medium shadow-md shadow-teal-500/20 transition-colors">新建会话</button>
+          <button id="btn-logout" class="px-4 py-2 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-slate-600 text-sm font-medium shadow-sm transition-colors">退出</button>
+        </div>
+      </div>
+
+      <!-- 主体内容 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+        <!-- 左侧侧边栏 (会话列表) -->
+        <div class="lg:col-span-3 flex flex-col bg-white rounded-2xl border border-teal-100/50 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between bg-teal-50/30">
+            <div class="text-sm font-bold text-teal-800">历史会话</div>
+            <button id="btn-refresh" class="text-xs text-teal-600 hover:text-teal-800 font-medium p-1 transition-colors">刷新</button>
+          </div>
+          <div id="conversations" class="flex-1 overflow-y-auto p-3 space-y-2 max-h-[70vh]"></div>
+        </div>
+
+        <!-- 右侧主区域 (聊天窗口) -->
+        <div class="lg:col-span-9 flex flex-col bg-white rounded-2xl border border-teal-100/50 shadow-sm overflow-hidden">
+          <!-- 聊天记录区域 -->
+          <div id="chat" class="flex-1 overflow-y-auto p-6 space-y-6 max-h-[60vh] bg-slate-50/50"></div>
+          
+          <!-- 输入区域 -->
+          <div class="p-4 border-t border-gray-100 bg-white">
+            <div class="flex gap-3">
+              <input id="input" class="flex-1 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all text-slate-700" placeholder="分享你的心情，或者任何想说的话…" />
+              <button id="btn-send" class="px-6 py-3 rounded-xl bg-teal-500 hover:bg-teal-600 text-white font-medium shadow-md shadow-teal-500/20 transition-all whitespace-nowrap">发送</button>
+            </div>
+            <div class="mt-3 text-xs text-slate-400 text-center">
+              免责声明：本产品用于心理支持与信息服务，不替代专业医疗诊断；如处于紧急危险请联系当地紧急服务或身边可信任的人。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 隐私设置弹层 -->
+    <div id="privacy-modal" class="fixed inset-0 z-50 hidden" aria-hidden="true">
+      <div id="privacy-backdrop" class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
+      <div class="relative flex min-h-full items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="privacy-title"
+          class="w-full max-w-md rounded-2xl border border-teal-100 bg-white shadow-xl shadow-slate-900/10"
+        >
+          <div class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div>
+              <h2 id="privacy-title" class="text-base font-bold text-slate-800">隐私与记忆</h2>
+              <p class="mt-1 text-xs leading-5 text-slate-500">用于跨会话个性化支持；具体记忆内容不会在聊天页展示。</p>
+            </div>
+            <button
+              type="button"
+              id="privacy-close"
+              class="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              aria-label="关闭"
+            >✕</button>
+          </div>
+
+          <div class="space-y-4 px-5 py-5">
+            <div class="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3.5">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-slate-800">长期记忆</div>
+                <div id="privacy-memory-hint" class="mt-0.5 text-xs text-slate-500">加载中…</div>
+              </div>
+              <button
+                type="button"
+                id="privacy-toggle"
+                role="switch"
+                aria-checked="false"
+                class="relative h-7 w-12 shrink-0 rounded-full bg-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/30"
+              >
+                <span
+                  id="privacy-toggle-knob"
+                  class="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform"
+                ></span>
+              </button>
+            </div>
+
+            <div class="rounded-xl border border-rose-100 bg-rose-50/50 px-4 py-3.5">
+              <div class="text-sm font-semibold text-slate-800">清除全部长期记忆</div>
+              <p class="mt-1 text-xs leading-5 text-slate-500">删除后不可恢复。关闭长期记忆不会自动清空已有内容。</p>
+              <button
+                type="button"
+                id="privacy-forget"
+                class="mt-3 w-full rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors"
+              >清除全部记忆</button>
+              <div id="privacy-forget-confirm" class="mt-3 hidden space-y-2">
+                <p class="text-xs text-rose-700">确定清除？此操作不可撤销。</p>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    id="privacy-forget-yes"
+                    class="flex-1 rounded-xl bg-rose-500 px-3 py-2 text-sm font-medium text-white hover:bg-rose-600 transition-colors"
+                  >确认清除</button>
+                  <button
+                    type="button"
+                    id="privacy-forget-no"
+                    class="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                  >取消</button>
+                </div>
+              </div>
+            </div>
+
+            <p id="privacy-toast" class="hidden text-center text-xs font-medium text-teal-700"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const chat = document.getElementById("chat");
+      const input = document.getElementById("input");
+      const btnSend = document.getElementById("btn-send");
+      const convBox = document.getElementById("conversations");
+      const btnNew = document.getElementById("btn-new");
+      const btnRefresh = document.getElementById("btn-refresh");
+      const btnLogout = document.getElementById("btn-logout");
+      const btnMemory = document.getElementById("btn-memory");
+
+      let activeStreamAbort = null;
+      let historyPollTimer = null;
+
+      function stopHistoryPoll() {
+        if (historyPollTimer) {
+          clearInterval(historyPollTimer);
+          historyPollTimer = null;
+        }
+      }
+
+      function abortActiveStream() {
+        if (activeStreamAbort) {
+          activeStreamAbort.abort();
+          activeStreamAbort = null;
+        }
+      }
+
+      function historyLooksPending(messages) {
+        if (!messages || messages.length === 0) return false;
+        const last = messages[messages.length - 1];
+        if (last.role === "user") return true;
+        if (last.role === "assistant" && !String(last.content || "").trim()) return true;
+        return false;
+      }
+
+      function scheduleHistoryPoll() {
+        stopHistoryPoll();
+        let attempts = 0;
+        historyPollTimer = setInterval(async () => {
+          attempts += 1;
+          const r = await fetch("/api/history");
+          const j = await r.json();
+          if (!j.ok) return;
+          if (!historyLooksPending(j.messages)) {
+            stopHistoryPoll();
+            await loadHistory(false);
+            await loadConversations();
+            return;
+          }
+          if (attempts >= 90) {
+            stopHistoryPoll();
+          }
+        }, 2000);
+      }
+
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+      });
+      // Chat replies often use decorative "呀~" / "啦~"; GFM can turn ~...~ into <del>.
+      // Counseling UI does not need strikethrough — disable it.
+      if (typeof marked.use === "function") {
+        marked.use({
+          tokenizer: {
+            del() {
+              return undefined;
+            },
+          },
+        });
+      }
+
+      function escapeLoneTildes(text) {
+        const s = String(text || "");
+        let out = "";
+        for (let i = 0; i < s.length; i++) {
+          if (s[i] === "~" && s[i - 1] !== "~" && s[i + 1] !== "~") {
+            out += "\\~";
+          } else {
+            out += s[i];
+          }
+        }
+        return out;
+      }
+
+      function renderAssistantMarkdown(el, text) {
+        const raw = escapeLoneTildes(String(text || ""));
+        const html = DOMPurify.sanitize(marked.parse(raw));
+        el.classList.add("md-content");
+        el.innerHTML = html;
+        if (typeof renderMathInElement === "function") {
+          renderMathInElement(el, {
+            throwOnError: false,
+            delimiters: [
+              { left: "$$", right: "$$", display: true },
+              { left: "\\[", right: "\\]", display: true },
+              { left: "$", right: "$", display: false },
+              { left: "\\(", right: "\\)", display: false }
+            ],
+            ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+          });
+        }
+      }
+
+      async function loadMemorySettings() {
+        const r = await fetch("/api/memory/settings");
+        const j = await r.json();
+        if (!j.ok) return null;
+        return j;
+      }
+
+      const privacyModal = document.getElementById("privacy-modal");
+      const privacyToggle = document.getElementById("privacy-toggle");
+      const privacyToggleKnob = document.getElementById("privacy-toggle-knob");
+      const privacyHint = document.getElementById("privacy-memory-hint");
+      const privacyToast = document.getElementById("privacy-toast");
+      const privacyForgetConfirm = document.getElementById("privacy-forget-confirm");
+      let privacyEnabled = false;
+      let privacyBusy = false;
+
+      function showPrivacyToast(msg) {
+        privacyToast.textContent = msg;
+        privacyToast.classList.remove("hidden");
+        clearTimeout(showPrivacyToast._t);
+        showPrivacyToast._t = setTimeout(() => privacyToast.classList.add("hidden"), 2200);
+      }
+
+      function setPrivacyToggleUI(enabled) {
+        privacyEnabled = !!enabled;
+        privacyToggle.setAttribute("aria-checked", enabled ? "true" : "false");
+        privacyToggle.classList.toggle("bg-teal-500", enabled);
+        privacyToggle.classList.toggle("bg-slate-300", !enabled);
+        privacyToggleKnob.style.transform = enabled ? "translateX(1.25rem)" : "translateX(0)";
+        privacyHint.textContent = enabled
+          ? "已开启：对话中的有用线索可能被记住，用于后续支持"
+          : "已关闭：不会再写入或召回长期记忆";
+      }
+
+      function openPrivacyModal() {
+        privacyForgetConfirm.classList.add("hidden");
+        privacyToast.classList.add("hidden");
+        privacyModal.classList.remove("hidden");
+        privacyModal.setAttribute("aria-hidden", "false");
+      }
+
+      function closePrivacyModal() {
+        privacyModal.classList.add("hidden");
+        privacyModal.setAttribute("aria-hidden", "true");
+        privacyForgetConfirm.classList.add("hidden");
+      }
+
+      async function refreshPrivacyModal() {
+        const s = await loadMemorySettings();
+        if (!s) {
+          privacyHint.textContent = "无法加载设置";
+          return false;
+        }
+        setPrivacyToggleUI(!!s.memory_enabled);
+        return true;
+      }
+
+      btnMemory.addEventListener("click", async () => {
+        openPrivacyModal();
+        const ok = await refreshPrivacyModal();
+        if (!ok) showPrivacyToast("无法加载隐私设置");
+      });
+
+      document.getElementById("privacy-close").addEventListener("click", closePrivacyModal);
+      document.getElementById("privacy-backdrop").addEventListener("click", closePrivacyModal);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !privacyModal.classList.contains("hidden")) closePrivacyModal();
+      });
+
+      privacyToggle.addEventListener("click", async () => {
+        if (privacyBusy) return;
+        privacyBusy = true;
+        privacyToggle.disabled = true;
+        try {
+          const url = privacyEnabled ? "/api/memory/disable" : "/api/memory/enable";
+          const r = await fetch(url, { method: "POST" });
+          const j = await r.json();
+          if (!j.ok) {
+            showPrivacyToast("操作失败，请稍后重试");
+            return;
+          }
+          setPrivacyToggleUI(!privacyEnabled);
+          showPrivacyToast(privacyEnabled ? "已开启长期记忆" : "已关闭长期记忆");
+        } catch (_) {
+          showPrivacyToast("网络异常，请稍后重试");
+        } finally {
+          privacyBusy = false;
+          privacyToggle.disabled = false;
+        }
+      });
+
+      document.getElementById("privacy-forget").addEventListener("click", () => {
+        privacyForgetConfirm.classList.toggle("hidden");
+      });
+      document.getElementById("privacy-forget-no").addEventListener("click", () => {
+        privacyForgetConfirm.classList.add("hidden");
+      });
+      document.getElementById("privacy-forget-yes").addEventListener("click", async () => {
+        if (privacyBusy) return;
+        privacyBusy = true;
+        try {
+          const r2 = await fetch("/api/memory/forget-all", { method: "POST" });
+          const j2 = await r2.json();
+          privacyForgetConfirm.classList.add("hidden");
+          showPrivacyToast(j2.ok ? "已清除全部长期记忆" : "清除失败");
+        } catch (_) {
+          showPrivacyToast("网络异常，请稍后重试");
+        } finally {
+          privacyBusy = false;
+        }
+      });
+
+      function thinkingHtml(label = "正在思考") {
+        return (
+          '<span class="thinking-indicator" aria-live="polite">' +
+            '<span class="thinking-label">' + label + '</span>' +
+            '<span class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>' +
+          "</span>"
+        );
+      }
+
+      function showThinking(bubble, label = "正在思考") {
+        bubble.innerHTML = thinkingHtml(label);
+      }
+
+      function addBubble(role, text, opts = {}) {
+        const pending = !!opts.pending;
+        const row = document.createElement("div");
+        row.className = "flex w-full " + (role === "user" ? "justify-end" : "justify-start");
+        const bubble = document.createElement("div");
+        bubble.className =
+          "max-w-[85%] rounded-2xl px-5 py-3 leading-relaxed shadow-sm text-sm md:text-base " +
+          (role === "user" 
+            ? "bg-teal-500 text-white rounded-tr-sm" 
+            : (pending
+              ? "bg-teal-50/30 border border-teal-100 text-slate-500 rounded-tl-sm"
+              : "bg-white border border-gray-100 text-slate-700 rounded-tl-sm"));
+        if (role === "assistant") {
+          if (pending) {
+            showThinking(bubble, "正在生成回复");
+          } else {
+            renderAssistantMarkdown(bubble, text);
+          }
+        } else {
+          bubble.textContent = text;
+        }
+        row.appendChild(bubble);
+        chat.appendChild(row);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      async function loadHistory(startPoll = true) {
+        const r = await fetch("/api/history");
+        const j = await r.json();
+        if (!j.ok) return;
+        chat.innerHTML = "";
+        
+        if (!j.messages || j.messages.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "flex flex-col items-center justify-center h-full text-slate-400 space-y-4 pt-10";
+            empty.innerHTML = `
+              <svg class="w-16 h-16 text-teal-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+              <p>今天想聊点什么呢？我在这里。</p>
+            `;
+            chat.appendChild(empty);
+            stopHistoryPoll();
+            return;
+        }
+
+        for (const m of (j.messages || [])) {
+          if (m.role === "assistant" && !String(m.content || "").trim()) {
+            addBubble("assistant", "", { pending: true });
+          } else {
+            addBubble(m.role, m.content);
+          }
+        }
+
+        if (startPoll && historyLooksPending(j.messages)) {
+          scheduleHistoryPoll();
+        } else if (!historyLooksPending(j.messages)) {
+          stopHistoryPoll();
+        }
+      }
+
+      function fmtTime(ts) {
+        try {
+          const d = new Date(ts * 1000);
+          return `${d.getMonth()+1}-${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+        } catch (_) {
+          return "";
+        }
+      }
+
+      async function loadConversations() {
+        const r = await fetch("/api/conversations");
+        const j = await r.json();
+        if (!j.ok) return;
+        convBox.innerHTML = "";
+        
+        if (!j.conversations || j.conversations.length === 0) {
+            convBox.innerHTML = '<div class="text-xs text-center text-slate-400 py-4">暂无历史会话</div>';
+            return;
+        }
+
+        for (const c of (j.conversations || [])) {
+          const row = document.createElement("div");
+          row.className = "rounded-xl border border-transparent bg-gray-50 hover:bg-teal-50/50 hover:border-teal-100 p-3 transition-colors group cursor-pointer";
+          const title = (c.title || "").trim() || "新会话";
+          // started_at = first message time; drafts are filtered out by the API
+          const timeLabel = c.started_at ? fmtTime(c.started_at) : "";
+          row.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <div class="flex items-start justify-between">
+                <div class="text-sm font-medium text-slate-700 truncate pr-2">${title}</div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-slate-400">${timeLabel}</div>
+                <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button class="btn-rename text-xs px-2 py-1 rounded-md bg-white border border-gray-200 text-slate-600 hover:text-teal-600 hover:border-teal-200 shadow-sm" title="重命名">✎</button>
+                  <button class="btn-del text-xs px-2 py-1 rounded-md bg-white border border-gray-200 text-rose-500 hover:bg-rose-50 hover:border-rose-200 shadow-sm" title="删除">✕</button>
+                </div>
+              </div>
+            </div>
+          `;
+          // Click row to open, but exclude action buttons
+          row.addEventListener("click", async (e) => {
+            if(e.target.closest('.btn-rename') || e.target.closest('.btn-del')) return;
+            abortActiveStream();
+            stopHistoryPoll();
+            await fetch("/api/conversation/select", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({sid: c.sid}),
+            });
+            await loadHistory();
+            await loadConversations();
+          });
+
+          row.querySelector(".btn-rename").addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const t = prompt("重命名会话：", title);
+            if (t === null) return;
+            await fetch("/api/conversation/rename", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({sid: c.sid, title: t}),
+            });
+            await loadConversations();
+          });
+          
+          row.querySelector(".btn-del").addEventListener("click", async (e) => {
+            e.stopPropagation();
+            if (!confirm("确定要删除该会话吗？")) return;
+            const r2 = await fetch("/api/conversation/delete", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({sid: c.sid}),
+            });
+            const j2 = await r2.json();
+            if (j2.rotated) {
+              await loadHistory();
+            }
+            await loadConversations();
+          });
+          convBox.appendChild(row);
+        }
+      }
+
+      async function doChat(text) {
+        abortActiveStream();
+        stopHistoryPoll();
+
+        // If chat was empty placeholder, clear it
+        if(chat.innerHTML.includes("svg")) {
+            chat.innerHTML = "";
+        }
+
+        addBubble("user", text);
+        input.value = "";
+        btnSend.disabled = true;
+        btnSend.textContent = "思考中…";
+        btnSend.classList.add("opacity-70");
+        
+        const controller = new AbortController();
+        activeStreamAbort = controller;
+
+        try {
+          const placeholderRow = document.createElement("div");
+          placeholderRow.className = "flex w-full justify-start";
+          const bubble = document.createElement("div");
+          bubble.className = "max-w-[85%] rounded-2xl px-5 py-3 leading-relaxed shadow-sm text-sm md:text-base border border-teal-100 bg-teal-50/30 text-slate-700 rounded-tl-sm";
+          let assistantText = "";
+          let gotFirstToken = false;
+          showThinking(bubble, "正在思考");
+          placeholderRow.appendChild(bubble);
+          chat.appendChild(placeholderRow);
+          chat.scrollTop = chat.scrollHeight;
+
+          const finishBubbleStyle = () => {
+            bubble.className = bubble.className
+              .replace("bg-teal-50/30", "bg-white")
+              .replace("border-teal-100", "border-gray-100");
+          };
+
+          const renderStreamChunk = () => {
+            if (!gotFirstToken && assistantText) {
+              gotFirstToken = true;
+            }
+            renderAssistantMarkdown(bubble, assistantText);
+            chat.scrollTop = chat.scrollHeight;
+          };
+
+          const r = await fetch("/api/chat_stream", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({text}),
+            signal: controller.signal,
+          });
+          
+          if (!r.ok || !r.body) {
+            const r2 = await fetch("/api/chat", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({text}),
+            });
+            let j2 = null;
+            try {
+              j2 = await r2.json();
+            } catch (_) {
+              const raw = await r2.text();
+              assistantText = "请求失败：" + (raw || r2.status);
+              renderAssistantMarkdown(bubble, assistantText);
+              finishBubbleStyle();
+              return;
+            }
+            assistantText = j2.ok ? (j2.assistant || "") : ("请求失败：" + (j2.error || "unknown"));
+            renderAssistantMarkdown(bubble, assistantText);
+            finishBubbleStyle();
+            await loadConversations();
+            return;
+          }
+
+          const reader = r.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          while (true) {
+            const {value, done} = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, {stream: true});
+            if (!chunk) continue;
+            assistantText += chunk;
+            renderStreamChunk();
+          }
+          if (!assistantText.trim()) {
+            showThinking(bubble, "正在生成回复");
+          } else {
+            finishBubbleStyle();
+          }
+          await loadConversations();
+        } catch (e) {
+          if (e && e.name === "AbortError") {
+            // Switched conversation; backend keeps generating and will persist the reply.
+            return;
+          }
+          addBubble("assistant", "请求异常：" + String(e));
+        } finally {
+          if (activeStreamAbort === controller) {
+            activeStreamAbort = null;
+          }
+          btnSend.disabled = false;
+          btnSend.textContent = "发送";
+          btnSend.classList.remove("opacity-70");
+          input.focus();
+        }
+      }
+
+      btnSend.addEventListener("click", () => {
+        const t = input.value.trim();
+        if (!t) return;
+        doChat(t);
+      });
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            btnSend.click();
+        }
+      });
+
+      btnNew.addEventListener("click", async () => {
+        abortActiveStream();
+        stopHistoryPoll();
+        await fetch("/api/conversation/new", { method: "POST" });
+        await loadHistory();
+        await loadConversations();
+        input.focus();
+      });
+
+      btnRefresh.addEventListener("click", () => {
+        loadConversations();
+      });
+
+      btnLogout.addEventListener("click", async () => {
+        await fetch("/api/logout", { method: "POST" });
+        window.location.href = "/login";
+      });
+
+      loadHistory().then(() => loadConversations());
+    </script>
+  </body>
+</html>

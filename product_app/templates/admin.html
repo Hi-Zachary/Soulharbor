@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>管理后台 - SoulHarbor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-50 text-slate-800 font-sans h-screen flex">
+    <aside class="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+      <div class="p-5 border-b border-gray-100">
+        <div class="text-lg font-bold text-teal-700">SoulHarbor</div>
+        <div class="text-xs text-slate-400 mt-1">管理后台</div>
+      </div>
+      <nav class="flex-1 p-3 space-y-1">
+        <button class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')"><span class="nav-icon">📊</span> 运营大盘</button>
+        <button class="nav-item" data-page="triage" onclick="switchPage('triage')"><span class="nav-icon">🚨</span> 处置工作台</button>
+        <button class="nav-item" data-page="conversations" onclick="switchPage('conversations')"><span class="nav-icon">💬</span> 会话浏览</button>
+        <button class="nav-item" data-page="users" onclick="switchPage('users')"><span class="nav-icon">👤</span> 用户管理</button>
+      </nav>
+      <div class="p-4 border-t border-gray-100">
+        <div class="text-xs text-slate-400 mb-2">数据仅限内部管理</div>
+        <button onclick="logout()" class="w-full px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-slate-600 text-sm font-medium transition-colors">退出后台</button>
+      </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div class="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4 flex-shrink-0">
+        <div class="text-sm font-semibold text-slate-700" id="page-title">运营大盘</div>
+        <div id="global-status" class="text-xs text-slate-400"></div>
+        <div class="flex-1"></div>
+        <div class="flex items-center gap-3 text-sm">
+          <label class="text-slate-500">日期范围</label>
+          <input type="date" id="filter-date-from" class="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-slate-700 w-36" />
+          <span class="text-slate-400">至</span>
+          <input type="date" id="filter-date-to" class="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-slate-700 w-36" />
+          <button onclick="refresh()" class="px-4 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white text-sm font-medium transition-colors">刷新</button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-6 min-h-0">
+        <div id="page-dashboard" class="page">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+            <div class="card"><div class="k">会话数</div><div id="c-conv" class="v">-</div></div>
+            <div class="card"><div class="k">消息数</div><div id="c-msg" class="v">-</div></div>
+            <div class="card"><div class="k">活跃用户数</div><div id="c-users" class="v">-</div></div>
+            <div class="card"><div class="k">待处理</div><div id="c-pending" class="v text-rose-500">-</div></div>
+            <div class="card"><div class="k">已处理</div><div id="c-processed" class="v text-sky-500">-</div></div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="panel"><div class="panel-title">分流分布</div><div id="route-box" class="space-y-4"></div></div>
+            <div class="panel"><div class="panel-title">咨询轮次</div><div id="consult-box" class="text-sm text-slate-600 py-4"><span id="consult-turns" class="text-3xl font-bold text-teal-700">-</span><span class="ml-2 text-slate-500">轮</span></div></div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <div class="panel">
+              <div class="flex items-center justify-between mb-4"><div class="panel-title mb-0">近期待处理重点</div><button id="overview-open-triage" class="link-btn">进入工作台</button></div>
+              <div id="overview-priority-box" class="space-y-3"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">近期活跃用户</div>
+              <div id="overview-users-box" class="space-y-3"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="page-triage" class="page hidden">
+          <div class="flex items-center gap-3 mb-4 flex-wrap">
+            <select id="triage-status-filter" class="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm">
+              <option value="all">全部状态</option><option value="pending">待处理</option><option value="tracking">跟进中</option><option value="resolved">已解决</option><option value="ignored">忽略</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            <div class="xl:col-span-4 panel p-0 overflow-hidden">
+              <div class="px-4 py-3 border-b border-gray-100 text-sm font-bold text-teal-800">预警队列</div>
+              <div id="triage-box" class="p-4 space-y-3 max-h-[72vh] overflow-y-auto"></div>
+            </div>
+            <div class="xl:col-span-8 space-y-4">
+              <div class="panel">
+                <div class="flex items-center justify-between mb-3">
+                  <div>
+                    <div class="text-sm font-bold text-teal-800">工作区</div>
+                    <div id="detail-meta" class="text-xs text-slate-400 mt-1">尚未选择会话</div>
+                  </div>
+                  <div id="detail-actions" class="hidden flex items-center gap-2">
+                    <button onclick="openReplayModal()" class="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm text-slate-600 hover:border-teal-200 hover:text-teal-700">查看回放</button>
+                  </div>
+                </div>
+                <div id="conversation-summary" class="text-sm text-slate-500">左侧选择一条预警会话，这里会显示风险摘要和处置信息。</div>
+              </div>
+
+              <div class="panel">
+                <div class="flex items-center gap-2 mb-4">
+                  <button class="detail-panel-btn active" data-detail-panel="summary">处理记录</button>
+                  <button class="detail-panel-btn" data-detail-panel="profile">用户画像</button>
+                </div>
+                <div id="detail-panel-summary" class="detail-panel">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="field-label">处置状态</label>
+                      <select id="triage-status" class="field-input">
+                        <option value="pending">待处理</option>
+                        <option value="tracking">跟进中</option>
+                        <option value="resolved">已解决</option>
+                        <option value="ignored">忽略</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="field-label">处理人</label>
+                      <input id="triage-assignee" class="field-input" placeholder="例如：王老师 / 学工办" />
+                    </div>
+                  </div>
+                  <div class="mt-4">
+                    <label class="field-label">处理意见 / 跟进备注</label>
+                    <textarea id="triage-note" class="field-input min-h-[160px]" placeholder="记录处理意见、外呼情况、后续跟进计划等"></textarea>
+                  </div>
+                  <div class="mt-4 flex items-center justify-between">
+                    <div id="triage-updated" class="text-xs text-slate-400"></div>
+                    <button id="triage-save" class="px-4 py-2 rounded-lg bg-teal-500 hover:bg-teal-600 text-white text-sm font-medium">保存处理记录</button>
+                  </div>
+                </div>
+                <div id="detail-panel-profile" class="detail-panel hidden">
+                  <div id="profile-box" class="text-sm text-slate-500">选中会话后，这里会同步展示该会话对应用户的画像。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="page-conversations" class="page hidden">
+          <div class="flex items-center gap-3 mb-4 flex-wrap">
+            <select id="conv-user-filter" onchange="loadConversations()" class="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"><option value="">全部用户</option></select>
+            <span id="conv-count" class="text-sm text-slate-400 ml-auto"></span>
+          </div>
+          <div class="panel p-0 overflow-hidden"><div id="conv-list" class="divide-y divide-gray-50 text-sm text-slate-400 text-center p-6">加载中...</div></div>
+        </div>
+
+        <div id="page-users" class="page hidden">
+          <div class="flex items-center mb-4"><span id="user-count" class="text-sm text-slate-400 ml-auto"></span></div>
+          <div class="panel p-0 overflow-hidden"><div id="user-list" class="divide-y divide-gray-50 text-sm text-slate-400 text-center p-6">加载中...</div></div>
+        </div>
+      </div>
+    </main>
+
+    <div id="replay-modal" class="fixed inset-0 z-50 hidden bg-black/40 flex items-center justify-center p-4" onclick="if(event.target===this) closeReplayModal()">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between p-4 border-b border-gray-100">
+          <div><div class="font-bold text-teal-800" id="replay-title">对话回放</div><div class="text-xs text-slate-400 mt-1" id="replay-meta"></div></div>
+          <button onclick="closeReplayModal()" class="text-slate-300 hover:text-slate-500 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50 min-h-0" id="replay-messages"></div>
+      </div>
+    </div>
+
+    <div id="profile-modal" class="fixed inset-0 z-50 hidden bg-black/40 flex items-center justify-center p-4" onclick="if(event.target===this) closeProfile()">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between p-4 border-b border-gray-100">
+          <div><div class="font-bold text-teal-800" id="profile-title">用户画像</div><div class="text-xs text-slate-400 mt-1" id="profile-meta"></div></div>
+          <button onclick="closeProfile()" class="text-slate-300 hover:text-slate-500 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50 min-h-0" id="profile-content"></div>
+      </div>
+    </div>
+
+    <style>
+      .nav-item{display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border-radius:10px;font-size:14px;font-weight:500;color:#64748b;border:none;background:transparent;cursor:pointer;transition:all .15s;text-align:left}
+      .nav-item:hover{color:#0d9488;background:#f0fdfa}
+      .nav-item.active{color:#0f766e;background:#ccfbf1;font-weight:600}
+      .nav-icon{font-size:16px;width:24px;text-align:center}
+      .page.hidden,.detail-panel.hidden{display:none}
+      .panel{border:1px solid #ccfbf1;background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+      .panel-title{font-size:14px;font-weight:700;color:#115e59;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #f1f5f9}
+      .card{border:1px solid #ccfbf1;background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+      .card .k{font-size:14px;color:#94a3b8;margin-bottom:8px}.card .v{font-size:36px;font-weight:700;color:#0d9488}
+      .route-badge{display:inline-block;padding:2px 8px;border-radius:9999px;font-size:12px;font-weight:600;background:#ecfdf5;color:#0f766e}
+      .msg-user{background:#f0fdfa;border-left:3px solid #14b8a6}.msg-assistant{background:#f8fafc;border-left:3px solid #94a3b8}.msg-system{background:#fefce8;border-left:3px solid #eab308;font-size:13px}
+      .mem-type{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:600}
+      .link-btn{background:none;border:none;color:#0d9488;font-size:13px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}.link-btn:hover{color:#0f766e}
+      .field-label{display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px}
+      .field-input{width:100%;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;color:#334155}
+      .detail-panel-btn{padding:6px 12px;border-radius:9999px;border:1px solid #e5e7eb;background:#fff;font-size:12px;font-weight:600;color:#64748b}
+      .detail-panel-btn.active{border-color:#99f6e4;background:#ccfbf1;color:#0f766e}
+    </style>
+
+    <script>
+      let currentPage = 'dashboard';
+      let userListCache = [];
+      const state = { triageItems: [], currentConversationSid: '', currentConversationDetail: null, currentUserHash: '', currentDetailPanel: 'summary' };
+      const pageTitles = { dashboard: '运营大盘', triage: '处置工作台', conversations: '会话浏览', users: '用户管理' };
+
+      function dateToUnix(d) { if (!d) return 0; return Math.floor(new Date(d + 'T00:00:00+08:00').getTime() / 1000); }
+      function dateToUnixEnd(d) { if (!d) return 0; return dateToUnix(d) + 86399; }
+      function fmtTime(ts) { if (!ts) return '-'; const d = new Date(ts * 1000); return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); }
+      function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+      function todayStr() { return new Date().toISOString().slice(0, 10); }
+      function routeBadge(route) { return `<span class="route-badge">${esc(routeLabel(route))}</span>`; }
+      function routeLabel(route) { return route === 'consult' ? '心理咨询' : (route === 'chat' ? '日常对话' : (route || '未知')); }
+      function statusMeta(status) {
+        const s = status || 'pending';
+        return {
+          pending: { label: '待处理', klass: 'border-rose-200 bg-rose-50 text-rose-700' },
+          tracking: { label: '跟进中', klass: 'border-amber-200 bg-amber-50 text-amber-700' },
+          resolved: { label: '已解决', klass: 'border-sky-200 bg-sky-50 text-sky-700' },
+          ignored: { label: '已忽略', klass: 'border-slate-200 bg-slate-50 text-slate-600' },
+        }[s] || { label: s, klass: 'border-slate-200 bg-slate-50 text-slate-600' };
+      }
+      function getDateParams() {
+        const from = document.getElementById('filter-date-from').value;
+        const to = document.getElementById('filter-date-to').value;
+        let p = '';
+        if (from) p += '&date_from=' + dateToUnix(from);
+        if (to) p += '&date_to=' + dateToUnixEnd(to);
+        return p;
+      }
+      function setStatus(text) { document.getElementById('global-status').textContent = text || ''; }
+      async function fetchJson(url, options) {
+        const r = await fetch(url, options);
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'request_failed');
+        return j;
+      }
+
+      function switchPage(name) {
+        currentPage = name;
+        document.querySelectorAll('.page').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById('page-' + name).classList.remove('hidden');
+        document.querySelector(`[data-page="${name}"]`).classList.add('active');
+        document.getElementById('page-title').textContent = pageTitles[name];
+        refresh();
+      }
+
+      function switchDetailPanel(name) {
+        state.currentDetailPanel = name;
+        document.querySelectorAll('.detail-panel').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.detail-panel-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('detail-panel-' + name).classList.remove('hidden');
+        document.querySelector(`.detail-panel-btn[data-detail-panel="${name}"]`).classList.add('active');
+      }
+
+      function refresh() {
+        if (currentPage === 'dashboard') loadDashboard();
+        else if (currentPage === 'triage') loadTriage();
+        else if (currentPage === 'conversations') loadConversations();
+        else if (currentPage === 'users') loadUsers();
+      }
+
+      function refreshUserFilterDropdown() {
+        const sel = document.getElementById('conv-user-filter');
+        const currentVal = sel.value;
+        sel.innerHTML = '<option value="">全部用户</option>';
+        for (const u of userListCache) sel.innerHTML += `<option value="${u.user_id_hash}">${esc(u.user_id_hash)} · ${u.memory_count}条记忆</option>`;
+        sel.value = currentVal;
+      }
+
+      async function loadDashboard() {
+        setStatus('加载中...');
+        const [statsRes, triageRes, usersRes] = await Promise.allSettled([
+          fetchJson('/admin/api/stats?' + getDateParams().replace(/^&/, '')),
+          fetchJson('/admin/api/triage?limit=20&status=pending' + getDateParams()),
+          fetchJson('/admin/api/users?limit=12')
+        ]);
+        const stats = statsRes.status === 'fulfilled' ? statsRes.value.today : null;
+        const triageItems = triageRes.status === 'fulfilled' ? triageRes.value.items : [];
+        const users = usersRes.status === 'fulfilled' ? usersRes.value.users : [];
+        document.getElementById('c-conv').textContent = stats ? stats.conversations : '-';
+        document.getElementById('c-msg').textContent = stats ? stats.messages : '-';
+        document.getElementById('c-users').textContent = stats ? stats.active_users : '-';
+        document.getElementById('c-pending').textContent = triageItems.length;
+        document.getElementById('c-processed').textContent = stats ? stats.triage_processed : '-';
+        document.getElementById('consult-turns').textContent = stats ? (stats.consult_turns ?? '-') : '-';
+        renderDist(document.getElementById('route-box'), stats ? stats.route_dist : [], 'route', true);
+        renderOverviewPriority(triageItems || []);
+        renderOverviewUsers(users || []);
+        setStatus('已更新');
+      }
+
+      function renderDist(el, rows, labelKey, isRoute) {
+        el.innerHTML = '';
+        if (!rows || rows.length === 0) { el.innerHTML = '<div class="text-slate-300 text-sm py-8 text-center">暂无数据</div>'; return; }
+        const routeMap = { chat: '日常对话', consult: '心理咨询' };
+        const max = Math.max(...rows.map(r => Number(r.count || 0)), 1);
+        for (const r of rows) {
+          let name = String(r[labelKey] || '');
+          if (isRoute && routeMap[name]) name = routeMap[name];
+          const count = Number(r.count || 0);
+          const pct = Math.round((count / max) * 100);
+          let color = 'bg-teal-400';
+          if (isRoute && name === '心理咨询') color = 'bg-emerald-400';
+          else if (isRoute && name === '日常对话') color = 'bg-sky-400';
+          const row = document.createElement('div');
+          row.innerHTML = `<div class="flex items-center justify-between mb-1"><div class="text-sm font-medium text-slate-700">${name}</div><div class="text-sm font-bold text-teal-700">${count}</div></div><div class="h-2.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full ${color}" style="width:${pct}%;"></div></div>`;
+          el.appendChild(row);
+        }
+      }
+
+      function renderOverviewPriority(items) {
+        const box = document.getElementById('overview-priority-box');
+        box.innerHTML = '';
+        if (!items.length) { box.innerHTML = '<div class="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">暂无待处理会话。</div>'; return; }
+        items.slice(0, 6).forEach(item => {
+          const meta = statusMeta(item.triage_status);
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = 'w-full rounded-2xl border border-slate-100 bg-white p-4 text-left hover:border-rose-200 hover:bg-rose-50/40';
+          card.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="truncate text-sm font-bold text-slate-800">${esc(item.title || '未命名会话')}</div><div class="mt-1 text-xs text-slate-500">${esc(item.user_id_hash)} · ${fmtTime(item.updated_at)}</div></div><div class="flex flex-col items-end gap-2">${routeBadge(item.route || 'consult')}<span class="rounded-full border px-2 py-1 text-[11px] font-semibold ${meta.klass}">${meta.label}</span></div></div>`;
+          card.addEventListener('click', async () => { switchPage('triage'); await loadConversationWorkspace(item.sid); });
+          box.appendChild(card);
+        });
+      }
+
+      function renderOverviewUsers(users) {
+        const box = document.getElementById('overview-users-box');
+        box.innerHTML = '';
+        if (!users.length) { box.innerHTML = '<div class="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">当前筛选范围内暂无活跃用户。</div>'; return; }
+        users.slice(0, 6).forEach(user => {
+          const card = document.createElement('div');
+          card.className = 'w-full rounded-2xl border border-sky-100 bg-sky-50/50 p-4 text-left';
+          card.innerHTML = `<div class="text-sm font-bold text-slate-800">${esc(user.user_id_hash || '未知用户')}</div><div class="mt-2 text-xs text-slate-500">会话 ${Number(user.conversation_count || 0)} · 记忆 ${Number(user.memory_count || 0)}</div><div class="mt-1 text-xs text-slate-400">最近活跃 ${fmtTime(user.last_active)}</div>`;
+          box.appendChild(card);
+        });
+      }
+
+      async function loadTriage() {
+        const status = document.getElementById('triage-status-filter').value;
+        const data = await fetchJson(`/admin/api/triage?limit=80&status=${encodeURIComponent(status)}${getDateParams()}`);
+        state.triageItems = data.items || [];
+        renderTriageList(state.triageItems);
+        if (state.currentConversationSid && state.triageItems.some(item => item.sid === state.currentConversationSid)) await loadConversationWorkspace(state.currentConversationSid);
+      }
+
+      function renderTriageList(items) {
+        const box = document.getElementById('triage-box');
+        box.innerHTML = '';
+        if (!items.length) { box.innerHTML = '<div class="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">当前筛选下暂无预警会话。</div>'; return; }
+        items.forEach(item => {
+          const meta = statusMeta(item.triage_status);
+          const active = state.currentConversationSid === item.sid;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = active ? 'w-full rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-left shadow-sm' : 'w-full rounded-2xl border border-slate-100 bg-white p-4 text-left transition hover:border-rose-200 hover:bg-rose-50/40';
+          button.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="truncate text-sm font-bold text-slate-800">${esc(item.title || '未命名会话')}</div><div class="mt-1 text-xs text-slate-500">${esc(item.user_id_hash)} · ${fmtTime(item.updated_at)}</div></div><div class="flex flex-col items-end gap-2">${routeBadge(item.route || 'consult')}<span class="rounded-full border px-2 py-1 text-[11px] font-semibold ${meta.klass}">${meta.label}</span></div></div><div class="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">${item.triage_assignee ? `<span>处理人：${esc(item.triage_assignee)}</span>` : '<span>尚未指派处理人</span>'}</div>`;
+          button.addEventListener('click', () => loadConversationWorkspace(item.sid));
+          box.appendChild(button);
+        });
+      }
+
+      async function loadConversationWorkspace(sid) {
+        const data = await fetchJson(`/admin/api/conversation-workspace?sid=${encodeURIComponent(sid)}`);
+        const detail = data.detail;
+        state.currentConversationDetail = detail;
+        state.currentConversationSid = detail.conversation.sid;
+        state.currentUserHash = detail.conversation.user_id_hash;
+        document.getElementById('detail-meta').textContent = `${esc(detail.conversation.user_id_hash)} · ${esc(detail.conversation.title || '未命名会话')}`;
+        document.getElementById('detail-actions').classList.remove('hidden');
+        const triage = detail.triage || {};
+        document.getElementById('triage-status').value = triage.status || 'pending';
+        document.getElementById('triage-assignee').value = triage.assignee || '';
+        document.getElementById('triage-note').value = triage.note || '';
+        document.getElementById('triage-updated').textContent = triage.updated_at ? `最近更新：${fmtTime(triage.updated_at)}` : '尚未记录处理信息';
+        renderConversationSummary(detail);
+        renderTriageList(state.triageItems);
+        await loadProfileWorkspace(detail.conversation.user_id_hash);
+      }
+
+      function renderConversationSummary(detail) {
+        const conv = detail.conversation || {};
+        const triage = detail.triage || {};
+        const metrics = detail.metrics || [];
+        const latest = metrics[0] || {};
+        const meta = statusMeta(triage.status || 'pending');
+        document.getElementById('conversation-summary').innerHTML = `<div class="flex flex-wrap items-center gap-2">${routeBadge(latest.route || 'consult')}<span class="rounded-full border px-2 py-1 text-[11px] font-semibold ${meta.klass}">${meta.label}</span></div><div class="mt-3 grid gap-3 md:grid-cols-2"><div class="rounded-2xl border border-white bg-white/80 p-3"><div class="text-xs font-semibold text-slate-500">会话信息</div><div class="mt-2 text-sm text-slate-700">${esc(conv.title || '未命名会话')}</div><div class="mt-1 text-xs text-slate-500">${esc(conv.user_id_hash || 'anon')} · 最近活跃 ${fmtTime(conv.updated_at)}</div></div><div class="rounded-2xl border border-white bg-white/80 p-3"><div class="text-xs font-semibold text-slate-500">处置信息</div><div class="mt-2 text-sm text-slate-700">${triage.assignee ? `处理人：${esc(triage.assignee)}` : '尚未指派处理人'}</div><div class="mt-1 text-xs text-slate-500">${triage.updated_at ? `最近更新：${fmtTime(triage.updated_at)}` : '尚未保存处理记录'}</div></div></div><div class="mt-3 rounded-2xl border border-white bg-white/80 p-3"><div class="text-xs font-semibold text-slate-500">最近分流记录</div><div class="mt-2 flex flex-wrap gap-2">${metrics.slice(0, 6).map((m) => `<span class="rounded-full border px-2 py-1 text-[11px] route-badge">${esc(routeLabel(m.route || (m.is_consult ? 'consult' : 'chat')))} · ${fmtTime(m.created_at)}</span>`).join('') || '<span class="text-xs text-slate-400">暂无记录</span>'}</div></div>`;
+      }
+
+      async function loadProfileWorkspace(hash) {
+        const data = await fetchJson(`/admin/api/user-profile-workspace?user_id_hash=${encodeURIComponent(hash)}`);
+        const detail = data.detail;
+        const memories = detail.memories || [];
+        const metrics = detail.recent_metrics || [];
+        const stats = detail.stats || {};
+        const typeColors = { profile: '#0d9488', preference: '#6366f1', situation: '#3b82f6' };
+        let html = `<div class="rounded-2xl border border-sky-200 bg-white/80 p-4"><div class="text-sm font-bold text-sky-800">${esc(hash)} · 简要画像</div><div class="mt-2 text-xs text-slate-600">会话 ${Number(stats.conversation_count || 0)} · 消息 ${Number(stats.message_count || 0)} · 最近活跃 ${fmtTime(stats.last_seen)}</div><div class="mt-4 space-y-3 text-xs leading-6 text-slate-600">`;
+        html += `<div><div class="font-semibold text-slate-700">长期记忆摘要</div><div>${memories.length ? memories.map((m) => `<div class="rounded-xl border p-3 mb-2 text-sm bg-white" style="border-left:3px solid ${typeColors[m.type] || '#cbd5e1'}"><div class="flex items-center gap-2 mb-2"><span class="mem-type" style="background:${typeColors[m.type] || '#cbd5e1'}15;color:${typeColors[m.type] || '#64748b'}">${esc(m.type)}</span><span class="font-medium text-slate-800">${esc(m.title)}</span></div><div class="text-slate-600 leading-relaxed">${esc(m.summary)}</div></div>`).join('') : '暂无长期记忆'}</div></div>`;
+        html += `<div><div class="font-semibold text-slate-700">近期分流记录</div><div>${metrics.length ? metrics.slice(0, 5).map((m) => `• ${fmtTime(m.created_at)} · ${esc(routeLabel(m.route || (m.is_consult ? 'consult' : 'chat')))}`).join('<br>') : '暂无记录'}</div></div>`;
+        html += `</div></div>`;
+        document.getElementById('profile-box').innerHTML = html;
+      }
+
+      async function loadConversations() {
+        const el = document.getElementById('conv-list');
+        el.innerHTML = '<div class="text-slate-400 py-8">加载中...</div>';
+        const userHash = document.getElementById('conv-user-filter').value;
+        let url = '/admin/api/conversations?limit=200' + getDateParams();
+        const j = await fetchJson(url);
+        let convs = j.conversations || [];
+        if (userHash) convs = convs.filter(c => c.user_id_hash === userHash);
+        document.getElementById('conv-count').textContent = `共 ${convs.length} 条`;
+        if (convs.length === 0) { el.innerHTML = '<div class="text-slate-400 py-8">暂无匹配会话</div>'; return; }
+        el.innerHTML = convs.map(c => `<div class="flex items-center justify-between px-5 py-3 hover:bg-teal-50/50 cursor-pointer transition-colors" onclick="openReplay('${c.sid}')"><div class="flex-1 min-w-0"><div class="font-medium text-sm text-slate-800 truncate">${esc(c.title)}</div><div class="text-xs text-slate-400 mt-1"><button class="link-btn" onclick="event.stopPropagation();viewUserConversations('${c.user_id_hash}')">${esc(c.user_id_hash)}</button> · ${c.msg_count} 条消息 · ${fmtTime(c.last_active)}</div></div><div class="flex gap-2.5 ml-4 flex-shrink-0 items-center">${routeBadge(c.route || (c.is_consult ? 'consult' : 'chat'))}</div></div>`).join('');
+      }
+
+      function viewUserConversations(hash) { document.getElementById('conv-user-filter').value = hash; switchPage('conversations'); }
+      async function populateUserDropdown() {
+        const j = await fetchJson('/admin/api/users?limit=200');
+        userListCache = j.users || [];
+        refreshUserFilterDropdown();
+      }
+
+      async function openReplay(sid) {
+        const modal = document.getElementById('replay-modal');
+        document.getElementById('replay-messages').innerHTML = '<div class="text-slate-400 text-center py-12">加载中...</div>';
+        modal.classList.remove('hidden');
+        const j = await fetchJson('/admin/api/conversations/' + sid);
+        const conv = j.conversation;
+        document.getElementById('replay-title').textContent = conv.title || '对话回放';
+        document.getElementById('replay-meta').innerHTML = `<button class="link-btn" onclick="closeReplayModal();viewUserProfile('${conv.user_id_hash}')">${esc(conv.user_id_hash)}</button> · ${conv.messages.length} 条消息 · ${fmtTime(conv.created_at)}`;
+        let html = '';
+        if (conv.summary) html += `<div class="msg-system rounded-xl p-3 text-sm"><span class="font-semibold text-amber-700">会话摘要：</span>${esc(conv.summary)}</div>`;
+        for (const m of conv.messages) {
+          const cls = m.role === 'user' ? 'msg-user' : 'msg-assistant';
+          const label = m.role === 'user' ? '用户' : '助手';
+          html += `<div class="${cls} rounded-xl p-3 text-sm"><span class="text-xs font-semibold text-slate-400 uppercase">${label}</span><div class="mt-1.5 whitespace-pre-wrap text-slate-800 leading-relaxed">${esc(m.content)}</div></div>`;
+        }
+        if (conv.turn_metrics && conv.turn_metrics.length > 0) html += `<div class="text-xs text-slate-400 pt-3 border-t border-gray-100 flex flex-wrap gap-2">分流：${conv.turn_metrics.map(t => routeBadge(t.route || (t.is_consult ? 'consult' : 'chat'))).join(' ')}</div>`;
+        document.getElementById('replay-messages').innerHTML = html;
+      }
+      function openReplayModal() { if (state.currentConversationSid) openReplay(state.currentConversationSid); }
+      function closeReplayModal() { document.getElementById('replay-modal').classList.add('hidden'); }
+
+      async function loadUsers() {
+        const el = document.getElementById('user-list');
+        el.innerHTML = '<div class="text-slate-400 py-8">加载中...</div>';
+        const j = await fetchJson('/admin/api/users?limit=200');
+        userListCache = j.users || [];
+        refreshUserFilterDropdown();
+        document.getElementById('user-count').textContent = `共 ${userListCache.length} 位用户`;
+        if (userListCache.length === 0) { el.innerHTML = '<div class="text-slate-400 py-8">暂无注册用户</div>'; return; }
+        el.innerHTML = userListCache.map(u => `<div class="flex items-center justify-between px-5 py-3 hover:bg-teal-50/50 cursor-pointer transition-colors" onclick="viewUserProfile('${u.user_id_hash}')"><div class="flex-1 min-w-0"><div class="font-medium text-sm text-slate-800">${esc(u.user_id_hash)}</div><div class="text-xs text-slate-400 mt-1">${u.memory_count} 条记忆 · ${u.conversation_count} 个会话 · 最近活跃 ${fmtTime(u.last_active)}</div></div><div class="flex gap-2.5 ml-4 flex-shrink-0 items-center">${u.recent_route ? routeBadge(u.recent_route) : ''}</div></div>`).join('');
+      }
+
+      function viewUserProfile(hash) { openProfile(hash); }
+      async function openProfile(hash) {
+        const modal = document.getElementById('profile-modal');
+        document.getElementById('profile-content').innerHTML = '<div class="text-slate-400 text-center py-12">加载中...</div>';
+        modal.classList.remove('hidden');
+        document.getElementById('profile-title').textContent = '用户画像';
+        document.getElementById('profile-meta').textContent = esc(hash);
+        const j = await fetchJson('/admin/api/users/' + hash + '/profile');
+        const p = j.profile;
+        document.getElementById('profile-meta').textContent = esc(hash) + ' · ' + p.memories.length + ' 条活跃记忆';
+        const typeColors = { profile: '#0d9488', preference: '#6366f1', situation: '#3b82f6' };
+        let html = `<div class="flex gap-2 mb-4"><button class="px-3 py-1.5 rounded-lg bg-teal-500 text-white text-xs font-medium hover:bg-teal-600 transition-colors" onclick="closeProfile();viewUserConversations('${hash}')">查看该用户全部会话</button></div>`;
+        html += '<div class="font-semibold text-sm text-teal-800 mb-3">长期记忆</div>';
+        if (p.memories.length === 0) html += '<div class="text-sm text-slate-400 py-4">暂无活跃记忆</div>';
+        else for (const m of p.memories) html += `<div class="rounded-xl border p-3 mb-2 text-sm bg-white" style="border-left:3px solid ${typeColors[m.type] || '#cbd5e1'}"><div class="flex items-center gap-2 mb-2"><span class="mem-type" style="background:${typeColors[m.type]}15;color:${typeColors[m.type]}">${esc(m.type)}</span><span class="font-medium text-slate-800">${esc(m.title)}</span></div><div class="text-slate-600 leading-relaxed">${esc(m.summary)}</div>${m.how_to_apply ? `<div class="text-xs text-teal-600 mt-1">应用：${esc(m.how_to_apply)}</div>` : ''}${m.expires_at ? `<div class="text-xs text-slate-400 mt-1">过期：${fmtTime(m.expires_at)}</div>` : ''}</div>`;
+        if (p.conversations?.length) html += '<div class="font-semibold text-sm text-teal-800 mt-4 mb-2">历史会话</div>' + p.conversations.slice(0, 10).map(c => `<div class="flex items-center justify-between p-2.5 rounded-lg hover:bg-gray-100 cursor-pointer text-sm transition-colors" onclick="closeProfile();openReplay('${c.sid}')"><span class="truncate text-slate-700">${esc(c.title || '会话')}</span><span class="text-xs text-slate-400 ml-3 flex-shrink-0">${c.msg_count} 条 · ${fmtTime(c.last_active)}</span></div>`).join('');
+        document.getElementById('profile-content').innerHTML = html;
+      }
+      function closeProfile() { document.getElementById('profile-modal').classList.add('hidden'); }
+
+      async function saveTriage() {
+        if (!state.currentConversationSid) return;
+        const payload = { sid: state.currentConversationSid, status: document.getElementById('triage-status').value, assignee: document.getElementById('triage-assignee').value, note: document.getElementById('triage-note').value };
+        const j = await fetchJson('/admin/api/triage/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        document.getElementById('triage-updated').textContent = `最近更新：${fmtTime(j.detail?.triage?.updated_at || 0)}`;
+        await loadTriage();
+      }
+
+      async function logout() { await fetch('/admin/api/logout', { method: 'POST' }); location.href = '/admin/login'; }
+
+      document.getElementById('triage-status-filter').addEventListener('change', loadTriage);
+      document.querySelectorAll('.detail-panel-btn').forEach(btn => btn.addEventListener('click', () => switchDetailPanel(btn.dataset.detailPanel)));
+      document.getElementById('triage-save').addEventListener('click', saveTriage);
+      document.getElementById('overview-open-triage').addEventListener('click', () => switchPage('triage'));
+
+      document.getElementById('filter-date-from').value = todayStr();
+      document.getElementById('filter-date-to').value = todayStr();
+      loadDashboard();
+      populateUserDropdown();
+    </script>
+  </body>
+</html>

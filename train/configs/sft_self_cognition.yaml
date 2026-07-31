@@ -1,0 +1,54 @@
+### SoulHarbor 自我认知 SFT — 小数据人设对齐
+### 对应脚本: train/scripts/llamafactory/run/run_sft_self_cognition.sh
+### 落盘产物: archive/weights/lora/sft_self_cognition_20260422_112858
+### 通常接在主 SFT adapter 之后: ADAPTER_NAME_OR_PATH=saves/.../sft_main2_xxx
+
+### model
+model_name_or_path: models/Qwen3-14B
+# adapter_name_or_path: archive/weights/lora/sft_main2_20260421_101255
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_target: all
+lora_rank: 8
+lora_alpha: 16
+quantization_bit: 4
+
+### dataset
+dataset: soulharbor_self_cognition_sft
+dataset_dir: train/data/llm
+template: qwen3_nothink
+enable_thinking: false
+cutoff_len: 1024
+preprocessing_num_workers: 4
+overwrite_cache: true
+val_size: 0.02
+
+### output
+output_dir: saves/qwen14b/lora/sft_self_cognition
+overwrite_output_dir: true
+logging_steps: 10
+save_steps: 50
+save_strategy: steps
+plot_loss: true
+
+### eval
+do_eval: true
+eval_strategy: steps
+eval_steps: 50
+per_device_eval_batch_size: 1
+load_best_model_at_end: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1   # 数据量小，acc 过大则更新次数不足
+learning_rate: 3.0e-5
+num_train_epochs: 5.0
+lr_scheduler_type: cosine
+warmup_steps: 20
+fp16: true
+flash_attn: sdpa
+gradient_checkpointing: true
+seed: 42
