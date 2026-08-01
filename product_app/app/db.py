@@ -6,7 +6,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 SCHEMA_SQL = """
@@ -71,23 +71,6 @@ CREATE TABLE IF NOT EXISTS turn_metrics (
 CREATE INDEX IF NOT EXISTS idx_turn_metrics_time ON turn_metrics(created_at);
 CREATE INDEX IF NOT EXISTS idx_turn_metrics_conv_time ON turn_metrics(conversation_id, created_at);
 
-CREATE TABLE IF NOT EXISTS user_memories (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  type TEXT NOT NULL,
-  title TEXT NOT NULL,
-  summary TEXT NOT NULL,
-  how_to_apply TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'active',
-  source_conversation_id INTEGER,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER,
-  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_memories_user_status ON user_memories(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_user_memories_user_type ON user_memories(user_id, type);
-
 CREATE TABLE IF NOT EXISTS memory_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -110,42 +93,22 @@ CREATE TABLE IF NOT EXISTS triage_records (
 );
 
 CREATE INDEX IF NOT EXISTS idx_triage_records_status_updated ON triage_records(status, updated_at);
-
-CREATE TABLE IF NOT EXISTS memory_embeddings (
-  memory_id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  embedding_json TEXT NOT NULL,
-  updated_at INTEGER NOT NULL,
-  FOREIGN KEY(memory_id) REFERENCES user_memories(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user ON memory_embeddings(user_id);
 """
 
 
-_MEMORY_COLUMN_MIGRATIONS = [
-    ("recall_count", "INTEGER NOT NULL DEFAULT 0"),
-    ("last_recalled_at", "INTEGER"),
-]
-
-_MEMORY_DROP_COLUMNS = (
-    "updated_at",  # sole touch clock is created_at (bumped on create/update)
-    "fact",
-    "why",
-    "importance",
-    "extraction_confidence",
-    "recall_quality_score",
-    "recall_feedback_count",
-    "merged_from_ids",
-    "merge_count",
-    "last_consolidated_at",
-)
-
+# Pre-AER / intermediate long-term memory schemas. Episode + Profile live in the
+# same sqlite file but are created by EpisodeStore.init().
 _LEGACY_DROP_TABLES = (
     "user_memory_digests",
     "chat_chunks",
     "memory_consolidation_runs",
-    "user_memories_fts",  # 已废弃的 FTS5 虚拟表（及其影子表由 SQLite 一并清理）
+    "user_memories_fts",  # FTS5 virtual table (SQLite drops shadow tables with it)
+    "user_memories",
+    "memory_embeddings",
+    "memory_index_meta",
+    "memory_nodes",
+    "memory_edges",
+    "memory_node_embeddings",
 )
 
 _TURN_METRICS_DROP_COLUMNS = (
@@ -261,117 +224,20 @@ class SQLiteStore:
             conn.commit()
         finally:
             conn.close()
-        self._migrate_columns("user_memories", _MEMORY_COLUMN_MIGRATIONS)
         self._migrate_columns("conversations", _CONVERSATION_COLUMN_MIGRATIONS)
-        conn = self._connect()
-        try:
-            conn.execute("DROP INDEX IF EXISTS idx_user_memories_consolidated")
-            conn.commit()
-        finally:
-            conn.close()
-        self._fold_memory_touch_into_created_at()
-        for col in _MEMORY_DROP_COLUMNS:
-            self._drop_column_if_exists("user_memories", col)
         for col in _TURN_METRICS_DROP_COLUMNS:
             self._drop_column_if_exists("turn_metrics", col)
         for table in _LEGACY_DROP_TABLES:
             self._drop_table_if_exists(table)
-        self._sync_memory_encoder_meta()
-        # Indexes on columns added by migration (must run after _migrate_columns).
+
+    def _table_exists(self, table: str) -> bool:
         conn = self._connect()
         try:
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_user_memories_status_recall "
-                "ON user_memories(user_id, status, recall_count)"
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    def _fold_memory_touch_into_created_at(self) -> None:
-        """Before dropping user_memories.updated_at, fold last-touch into created_at."""
-        conn = self._connect()
-        try:
-            cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_memories)").fetchall()}
-            if "created_at" not in cols or "updated_at" not in cols:
-                return
-            conn.execute(
-                "UPDATE user_memories SET created_at = updated_at "
-                "WHERE updated_at IS NOT NULL AND updated_at > created_at"
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    def upsert_memory_embedding(self, *, memory_id: int, user_id: int, embedding: List[float]) -> None:
-        conn = self._connect()
-        try:
-            now = _now_ts()
-            conn.execute(
-                "INSERT INTO memory_embeddings(memory_id, user_id, embedding_json, updated_at) "
-                "VALUES(?,?,?,?) "
-                "ON CONFLICT(memory_id) DO UPDATE SET "
-                "embedding_json=excluded.embedding_json, updated_at=excluded.updated_at",
-                (int(memory_id), int(user_id), json.dumps(embedding), now),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    def get_memory_embeddings(self, user_id: int, memory_ids: List[int]) -> Dict[int, List[float]]:
-        if not memory_ids:
-            return {}
-        from product_app.app.memory.embeddings import MemoryEmbedder
-
-        expected_dim = MemoryEmbedder.shared().embed_dim
-        conn = self._connect()
-        try:
-            placeholders = ",".join("?" for _ in memory_ids)
-            rows = conn.execute(
-                f"SELECT memory_id, embedding_json FROM memory_embeddings "
-                f"WHERE user_id=? AND memory_id IN ({placeholders})",
-                [int(user_id)] + [int(i) for i in memory_ids],
-            ).fetchall()
-            out: Dict[int, List[float]] = {}
-            for r in rows:
-                try:
-                    vec = json.loads(r["embedding_json"] or "[]")
-                    if isinstance(vec, list) and len(vec) == expected_dim:
-                        out[int(r["memory_id"])] = [float(x) for x in vec]
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    continue
-            return out
-        finally:
-            conn.close()
-
-    def delete_memory_embedding(self, memory_id: int) -> None:
-        conn = self._connect()
-        try:
-            conn.execute("DELETE FROM memory_embeddings WHERE memory_id=?", (int(memory_id),))
-            conn.commit()
-        finally:
-            conn.close()
-
-    def _sync_memory_encoder_meta(self) -> None:
-        from product_app.app.config import settings
-
-        model_key = str(settings.memory_encoder_base)
-        conn = self._connect()
-        try:
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS memory_index_meta ("
-                "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-            )
             row = conn.execute(
-                "SELECT value FROM memory_index_meta WHERE key='encoder_model'"
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
             ).fetchone()
-            if row and str(row["value"]) != model_key:
-                conn.execute("DELETE FROM memory_embeddings")
-            conn.execute(
-                "INSERT OR REPLACE INTO memory_index_meta(key, value) VALUES('encoder_model', ?)",
-                (model_key,),
-            )
-            conn.commit()
+            return row is not None
         finally:
             conn.close()
 
@@ -846,108 +712,6 @@ class SQLiteStore:
         finally:
             conn.close()
 
-    def forget_all_memories(self, user_id: int) -> int:
-        conn = self._connect()
-        try:
-            node_rows = conn.execute(
-                "SELECT id FROM memory_nodes WHERE user_id=?",
-                (int(user_id),),
-            ).fetchall()
-            node_ids = [int(row["id"]) for row in node_rows]
-            if node_ids:
-                placeholders = ",".join("?" for _ in node_ids)
-                conn.execute(
-                    f"DELETE FROM memory_edges WHERE parent_id IN ({placeholders}) OR child_id IN ({placeholders})",
-                    node_ids + node_ids,
-                )
-            conn.execute("DELETE FROM memory_node_embeddings WHERE user_id=?", (int(user_id),))
-            cur = conn.execute("DELETE FROM memory_nodes WHERE user_id=?", (int(user_id),))
-            conn.commit()
-            return int(cur.rowcount)
-        finally:
-            conn.close()
-
-    def count_active_memories(self, user_id: int) -> int:
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) as c FROM memory_nodes WHERE user_id=? AND status='active'",
-                (int(user_id),),
-            ).fetchone()
-            return int(row["c"])
-        finally:
-            conn.close()
-
-    def count_new_memories_since(self, user_id: int, since_ts: int) -> int:
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) as c FROM memory_nodes WHERE user_id=? AND created_at > ?",
-                (int(user_id), int(since_ts)),
-            ).fetchone()
-            return int(row["c"])
-        finally:
-            conn.close()
-
-    def list_all_active_memories(self, user_id: int) -> List[Dict[str, Any]]:
-        conn = self._connect()
-        try:
-            rows = conn.execute(
-                "SELECT * FROM memory_nodes WHERE user_id=? AND status='active' "
-                "ORDER BY updated_at DESC, id DESC",
-                (int(user_id),),
-            ).fetchall()
-            return [
-                {
-                    "id": int(r["id"]),
-                    "user_id": int(r["user_id"]),
-                    "layer": int(r["layer"]),
-                    "content": str(r["content"] or ""),
-                    "status": str(r["status"] or "active"),
-                    "anchor_time": int(r["anchor_time"]),
-                    "created_at": int(r["created_at"]),
-                    "updated_at": int(r["updated_at"]),
-                    "meta": json.loads(str(r["meta_json"] or "{}")),
-                }
-                for r in rows
-            ]
-        finally:
-            conn.close()
-
-    def get_active_memory(self, user_id: int, memory_id: int) -> Optional[Dict[str, Any]]:
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT * FROM memory_nodes WHERE id=? AND user_id=? AND status='active'",
-                (int(memory_id), int(user_id)),
-            ).fetchone()
-            if not row:
-                return None
-            return {
-                "id": int(row["id"]),
-                "user_id": int(row["user_id"]),
-                "layer": int(row["layer"]),
-                "content": str(row["content"] or ""),
-                "status": str(row["status"] or "active"),
-                "anchor_time": int(row["anchor_time"]),
-                "created_at": int(row["created_at"]),
-                "updated_at": int(row["updated_at"]),
-                "meta": json.loads(str(row["meta_json"] or "{}")),
-            }
-        finally:
-            conn.close()
-
-    def count_memories_by_type(self, user_id: int, type_: str) -> int:
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) as c FROM memory_nodes WHERE user_id=? AND layer=? AND status='active'",
-                (int(user_id), int(type_) if str(type_).isdigit() else 1),
-            ).fetchone()
-            return int(row["c"])
-        finally:
-            conn.close()
-
     def append_memory_event(self, user_id: int, action: str, memory_id: Optional[int] = None, detail: Optional[Dict[str, Any]] = None) -> None:
         conn = self._connect()
         try:
@@ -1050,11 +814,26 @@ class SQLiteStore:
 
     # ---- admin: user management ----
     def list_users_with_stats(self, *, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """Admin user list. memory_count = AER episode chunks + active profile prefs."""
+        has_chunks = self._table_exists("memory_episode_chunks")
+        has_profile = self._table_exists("support_profile_items")
+        chunk_cnt = (
+            "(SELECT COUNT(*) FROM memory_episode_chunks ec "
+            "WHERE ec.user_id=u.id AND ec.is_deleted=0)"
+            if has_chunks
+            else "0"
+        )
+        profile_cnt = (
+            "(SELECT COUNT(*) FROM support_profile_items sp "
+            "WHERE sp.user_id=u.id AND sp.status='active')"
+            if has_profile
+            else "0"
+        )
         conn = self._connect()
         try:
             rows = conn.execute(
                 "SELECT u.id as uid, "
-                "  (SELECT COUNT(*) FROM memory_nodes mn WHERE mn.user_id=u.id AND mn.status='active') as mem_cnt, "
+                f"  ({chunk_cnt} + {profile_cnt}) as mem_cnt, "
                 "  (SELECT COUNT(*) FROM conversations c2 WHERE c2.user_id=u.id) as conv_cnt, "
                 "  (SELECT MAX(c2.updated_at) FROM conversations c2 WHERE c2.user_id=u.id) as last_active, "
                 "  (SELECT tm.route FROM turn_metrics tm "
@@ -1076,56 +855,6 @@ class SQLiteStore:
                     "recent_route": str(r["recent_route"]) if r["recent_route"] else "",
                 })
             return out
-        finally:
-            conn.close()
-
-    def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
-        conn = self._connect()
-        try:
-            uid = int(user_id)
-            user_row = conn.execute("SELECT id FROM users WHERE id=?", (uid,)).fetchone()
-            if not user_row:
-                return None
-
-            mem_rows = conn.execute(
-                "SELECT layer, content, status, anchor_time, created_at, updated_at, meta_json "
-                "FROM memory_nodes WHERE user_id=? AND status='active' "
-                "ORDER BY updated_at DESC, id DESC",
-                (uid,),
-            ).fetchall()
-
-            conv_rows = conn.execute(
-                "SELECT sid, title, "
-                "  (SELECT COUNT(*) FROM messages m2 WHERE m2.conversation_id=conversations.id) as msg_count, "
-                "  updated_at "
-                "FROM conversations WHERE user_id=? ORDER BY updated_at DESC LIMIT 30",
-                (uid,),
-            ).fetchall()
-
-            return {
-                "user_id_hash": _hash_user_id(uid),
-                "memories": [
-                    {
-                        "layer": int(m["layer"]),
-                        "content": str(m["content"] or ""),
-                        "status": str(m["status"] or "active"),
-                        "anchor_time": int(m["anchor_time"]),
-                        "created_at": int(m["created_at"]),
-                        "updated_at": int(m["updated_at"]),
-                        "meta": json.loads(str(m["meta_json"] or "{}")),
-                    }
-                    for m in mem_rows
-                ],
-                "conversations": [
-                    {
-                        "sid": str(c["sid"]),
-                        "title": str(c["title"] or ""),
-                        "msg_count": int(c["msg_count"]),
-                        "last_active": int(c["updated_at"]),
-                    }
-                    for c in conv_rows
-                ],
-            }
         finally:
             conn.close()
 
@@ -1304,51 +1033,6 @@ class SQLiteStore:
                     "updated_at": int(triage["updated_at"]) if triage and triage["updated_at"] else 0,
                 },
             }
-        finally:
-            conn.close()
-
-    def get_admin_user_profile_workspace(self, user_id: int) -> Optional[Dict[str, Any]]:
-        conn = self._connect()
-        try:
-            uid = int(user_id)
-            user_row = conn.execute("SELECT id, username FROM users WHERE id=?", (uid,)).fetchone()
-            if not user_row:
-                return None
-            base = self.get_user_profile(uid)
-            if base is None:
-                return None
-            stats = conn.execute(
-                "SELECT "
-                "  (SELECT COUNT(*) FROM conversations WHERE user_id=?) as conversation_count, "
-                "  (SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id=?)) as message_count, "
-                "  (SELECT MAX(updated_at) FROM conversations WHERE user_id=?) as last_seen",
-                (uid, uid, uid),
-            ).fetchone()
-            recent_metrics = conn.execute(
-                "SELECT tm.created_at, tm.route, tm.is_consult "
-                "FROM turn_metrics tm JOIN conversations c ON c.id=tm.conversation_id "
-                "WHERE c.user_id=? ORDER BY tm.id DESC LIMIT 8",
-                (uid,),
-            ).fetchall()
-            base["user"] = {
-                "id": uid,
-                "username": str(user_row["username"] or ""),
-                "user_id_hash": _hash_user_id(uid),
-            }
-            base["stats"] = {
-                "conversation_count": int(stats["conversation_count"] or 0),
-                "message_count": int(stats["message_count"] or 0),
-                "last_seen": int(stats["last_seen"] or 0),
-            }
-            base["recent_metrics"] = [
-                {
-                    "created_at": int(r["created_at"]),
-                    "route": str(r["route"] or ""),
-                    "is_consult": int(r["is_consult"] or 0),
-                }
-                for r in recent_metrics
-            ]
-            return base
         finally:
             conn.close()
 

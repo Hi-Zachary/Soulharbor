@@ -110,7 +110,7 @@ product_app/app/memory/
 
 设计要点：
 
-- **助理话轮也入库**：用于语义邻接与扩窗连续性，但 **注入块默认只放用户原文**（`formatter._pick_snippet_messages`），避免把咨询师复述当成用户事实、也节省预算。
+- **助理话轮也入库**：用于语义邻接与扩窗连续性，但 **注入块默认只放用户原文**（`formatter._pick_user_turns`：每窗最多 6 条 user 话轮、优先 seed 与查询相关句），避免把咨询师复述当成用户事实、也节省预算。
 - **本轮已在 prompt 里的原文 message_id 会从召回排除**，避免与 verbatim 窗重复。
 - **链路异常只打日志、返回空块**，对话永不因记忆挂死。
 
@@ -128,11 +128,12 @@ SQLite（与主库同文件或同路径策略由引擎构造时传入），逻�
 | `support_profile_items` | ProfileItem：`origin ∈ {explicit, confirmed}`，`status ∈ {active, deleted}` |
 | `support_profile_sources` | 画像 ↔ 来源 message_id |
 | `support_profile_pending` | 助理提议队列（每用户最多 8 条；确认时按先进先出全部落库） |
+| `support_profile_llm_state` | LLM 提议攒批游标（未抽消息数 / 批次开始时间 / 上次尝试），按用户一行 |
 | `memory_backfill_checkpoint` | 历史回填断点 |
 
 **幂等**：同 `(message_id, chunk_index)` 重写不产生重复块。  
 **删除**：软删 chunk（`is_deleted=1`）并清 embedding；画像软删。  
-表名保留 `memory_episode_*` / `support_profile_*` 是为兼容已有库文件；Python 层已统一为 Chronicle / Care 命名。
+表名保留 `memory_episode_*` / `support_profile_*`，与 Python 层 `EpisodeStore` / `ProfileService` 一一对应。
 
 ---
 
@@ -190,7 +191,8 @@ s =&\; 0.40\cdot\mathrm{cos}(c,\mathrm{pivot}) + 0.22\cdot\mathrm{cos}(c,\mathrm
 
 - 默认阈值 `MEMORY_CONTINUITY_THRESHOLD=0.28`；连续失败 2 次停止；  
 - 跨度 ≤ `MEMORY_EXPAND_MAX_SPAN`（12），消息数 ≤ `MEMORY_WINDOW_MAX_MESSAGES`（10）；  
-- 实体重叠很强时可 soft-keep（阈值 ×0.75）。
+- **逃生口**：embedding 弱但强共指实体——候选与 seed 实体 Jaccard ≥0.35 且得分 ≥ 0.75×阈值仍纳入（实体共指比语义更可靠地标识"同一件事"）；  
+- adaptive 扩完后保留 `max(2×MEMORY_WINDOW_TOP_K, MEMORY_SEED_TOP_K)` = 12 个候选供下游合并/串链/选择。
 
 **fixed**  
 退化为邻居窗：`MEMORY_NEIGHBOR_BEFORE/AFTER`（默认 2/2），再按会话合并重叠窗。
@@ -199,10 +201,11 @@ s =&\; 0.40\cdot\mathrm{cos}(c,\mathrm{pivot}) + 0.22\cdot\mathrm{cos}(c,\mathrm
 
 ### 6.4 合并、重排、串链、覆盖选择
 
-1. **span_merge**：同会话位置重叠的 span 合并，控制消息上限。  
-3. **chain_link**：跨会话贪心串链（实体 / 语义 / 时间序 / 查询增益 / 同会话奖励），链内按时间排序，打上 `chain_id`（E1/E2…）。时间分按间隔**指数衰减**：`time = max(0.05, 0.35·exp(−days/90))`（同天 ≈0.35，90 天 ≈0.12，约 180 天到 0.05 下限）；倒序但 3 天内给 0.15，更早的倒序给 0——即"越近的经历越值得串链，太远的旧事不该被硬拉进当前话题"。  
-4. **coverage**（默认）：贪心选 `MEMORY_WINDOW_TOP_K`（6），目标 ≈  
-   `相关 + 新信息覆盖 + 查询增益 + 时间桶多样性 − 与已选冗余`。  
+1. **span_merge**：同会话**位置重叠或相邻**（`min(cur_pos) ≤ max(prev_pos)+1`）的窗合并，控制消息上限（超限按 seed 居中裁剪）。  
+2. **feature rerank**（无 LLM）：`fused×2.0 + 查询词重叠×1.5 + 含 user 话轮×0.3 − 消息数长度税`，pool 取 `max(2×window_top_k, 8)`。  
+3. **chain_link**：跨会话贪心串链（实体 0.30 / 语义 0.30 / 时间序 0.20 / 查询增益 0.15 / 同会话 0.1），链内按时间排序，打上 `chain_id`（E1/E2…）。时间分按间隔**指数衰减**：`time = max(0.05, 0.35·exp(−days/90))`（同天 ≈0.35，90 天 ≈0.12，约 180 天到 0.05 下限）；倒序但 3 天内给 0.15，更早的倒序给 0。**比链尾早 >14 天的事件跳过不串**——"太远的旧事不该被硬拉进当前话题"；`E{no}` 标签在"多链或链内多窗"时给出。  
+4. **coverage**（默认）：贪心选 `MEMORY_WINDOW_TOP_K`（6），得分 ≈  
+   `min(相关,2.2) + 1.6×新增信息覆盖 + 1.0×查询词增益 + 时间桶首现(0.9)/重复(−0.15) − 1.8×与已选冗余`，**剩余最佳分 <0.05 提前终止**。  
    也可切 `EVIDENCE_SELECTION_MODE=topk` 做消融。
 
 ### 6.5 Profile 注入
@@ -211,8 +214,8 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 
 ### 6.6 渲染与注入
 
-- `context/formatter.py`：按链分组；**仅 user 话轮**；默认尽量整段注入（seed ≤1000 / 普通 ≤800 字）。仅极端超长才用 **BGE 句子级语义相似度** 定位相关局部（批量 embed，失败则保尾部）；总长仍由 `<memory>` token 预算整行裁剪。  
-- `context/builder.py`：包成 `<memory>…</memory>`，默认 token 预算 1600。  
+- `context/formatter.py`：按链分组；**仅 user 话轮**（每窗注入上限 6 条，优先 seed 与查询相关句）；默认尽量整段注入（seed ≤1000 / 普通 ≤800 字）。仅极端超长才用 **BGE 句子级语义相似度** 定位相关局部（批量 embed，失败则保尾部）；总长仍由 `<memory>` token 预算整行裁剪。  
+- `context/builder.py`：包成 `<memory>…</memory>`，默认 token 预算 1600；`trim_lines_to_budget` 到首个超预算行截断，builder 再兜底丢尾部整行。  
 - `service.py` 在 system 侧加 `_MEMORY_SYSTEM_PREFIX`：说明块是历史证据、可部分采用、冲突以当前话语为准、禁止编造。
 
 `RetrievalTrace` 记录 mode、pivots、bundles、链条数、时延等，便于日志与评测对照。
@@ -237,14 +240,14 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 | 变量 | 默认 | 含义 |
 |---|---|---|
 | `MEMORY_BACKEND` | `aer` | 后端标识（仅 `aer` 走本实现） |
-| `MEMORY_STORE_ENABLED` | 1 | Chronicle 读写 |
+| `MEMORY_STORE_ENABLED` | 1 | Episode（原文库）读写 |
 | `MEMORY_PROFILE_ENABLED` | 1 | Profile |
 | `MEMORY_PROFILE_LLM_PROPOSE` | 1 | 助理回合后中文 LLM 提议 pending（仍需用户确认） |
 | `MEMORY_PROFILE_LLM_PROPOSE_MAX` | 1 | 每次最多提议条数 |
 | `MEMORY_PROFILE_LLM_SKIP_IF_PENDING` | 1 | 已有待确认时不再抽新候选 |
 | `MEMORY_PROFILE_LLM_TRIGGER_MESSAGES` | 5 | 未抽消息数达到此值才尝试 LLM 提议（MemMachine 式攒批） |
 | `MEMORY_PROFILE_LLM_TRIGGER_AGE_SEC` | 300 | 批次年龄（秒）达到此值也触发尝试；`0` 关闭年龄触发 |
-| `MEMORY_SPLIT_QUERY_ENABLED` | 1 | 比较句拆分 |
+| `MEMORY_SPLIT_QUERY_ENABLED` | 1 | LLM 查询规划（`direct` / `split`；关掉则整句 direct） |
 | `MEMORY_BUNDLE_RERANK_ENABLED` | 1 | 特征重排（无 LLM） |
 | `MEMORY_EXPAND_MODE` | `adaptive` | `adaptive` \| `fixed` |
 | `MEMORY_CONTINUITY_THRESHOLD` | 0.28 | 扩窗阈值 |

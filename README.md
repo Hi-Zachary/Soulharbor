@@ -13,7 +13,7 @@ SoulHarbor/
 │   └── app/memory/       # 长期记忆：AER（原文库 + 查询时重建，backend=aer）
 ├── prompts/              # 主对话 system：system_soulharbor_zh.txt
 ├── scripts/memory/       # 记忆运维：backfill / verify_index / migrate_profiles / compare_backends
-├── models/               # Qwen3-14B + chinese-macbert-large + bge-m3（本地，不入库）
+├── models/               # Qwen3-14B + chinese-macbert-base + bge-m3（本地，不入库）
 ├── saves/qwen14b/lora/   # dpo_synth_* 对话 LoRA（本地，不入库）
 ├── outputs/classifiers/  # 意图分类器（本地，不入库）
 ├── train/                # 微调脚本 + configs/*.yaml
@@ -39,7 +39,7 @@ bash product_app/start.sh
 
 | 线 | 做什么 | 证据 |
 |---|---|---|
-| **对话微调** | Qwen3-14B QLoRA：PT→SFT→自我认知→DPO；MacBERT 分流；咨询/闲聊/摘要不同 scale | `train/` · `evaluate/dialogue/runs/` |
+| **对话微调** | Qwen3-14B QLoRA：PT→SFT→自我认知→DPO；MacBERT-base 分流；咨询/闲聊不同 LoRA scale、摘要走裸基座 | `train/` · `evaluate/dialogue/runs/` |
 | **长期记忆 AER** | 原文入库 + 查询时扩窗重建；consent Profile；尽量整段注入 | `项目文档/05`·`06` · QA≈91% vs Mem0≈64% |
 
 ## 记忆系统
