@@ -159,8 +159,13 @@ class ProfileService:
         llm: Any,
         recent_turns: Sequence[dict],
         source_message_id: int,
+        force: bool = False,
     ) -> Optional[str]:
-        """LLM extracts support-preference candidates → pending only (never active)."""
+        """LLM extracts support-preference candidates → pending only (never active).
+
+        By default runs only when MemMachine-like batch triggers fire (message count
+        or age). Pass force=True to bypass the batch gate (tests).
+        """
         from product_app.app.memory.config import mem_cfg
         from product_app.app.memory.profile.proposer import (
             evidence_supported,
@@ -169,7 +174,16 @@ class ProfileService:
             user_texts,
         )
 
+        if not force and not self._db.should_attempt_llm_propose(
+            user_id,
+            trigger_messages=int(mem_cfg.profile_llm_trigger_messages),
+            trigger_age_sec=int(mem_cfg.profile_llm_trigger_age_sec),
+        ):
+            return None
+
         if mem_cfg.profile_llm_skip_if_pending and self._db.count_pending(user_id) > 0:
+            # Still consume the batch so we do not spin every turn while pending waits.
+            self._db.mark_llm_propose_attempted(user_id, source_message_id)
             return None
 
         existing = [p.content for p in self.list_active(user_id)]
@@ -181,6 +195,8 @@ class ProfileService:
             existing=existing,
             max_items=max_items,
         )
+        # Mark attempted whether or not anything was added (like MemMachine ingest mark).
+        self._db.mark_llm_propose_attempted(user_id, source_message_id)
         if not proposals:
             return None
         u_msgs = user_texts(recent_turns)
@@ -202,6 +218,10 @@ class ProfileService:
                 added += 1
                 existing.append(content)
         return f"profile_llm_proposed:{added}" if added else None
+
+    def note_message_for_llm_propose(self, user_id: int) -> None:
+        """Accumulate toward the next batch trigger (call on each ingested turn)."""
+        self._db.bump_llm_uningested(user_id)
 
     def _create(
         self,

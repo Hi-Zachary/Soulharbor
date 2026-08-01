@@ -19,6 +19,13 @@ class MemorySettings:
     profile_llm_propose: bool = _b("MEMORY_PROFILE_LLM_PROPOSE", "1")
     profile_llm_propose_max: int = int(os.environ.get("MEMORY_PROFILE_LLM_PROPOSE_MAX", "1"))
     profile_llm_skip_if_pending: bool = _b("MEMORY_PROFILE_LLM_SKIP_IF_PENDING", "1")
+    # MemMachine-like batching: propose after N new messages or age (seconds).
+    profile_llm_trigger_messages: int = int(
+        os.environ.get("MEMORY_PROFILE_LLM_TRIGGER_MESSAGES", "5")
+    )
+    profile_llm_trigger_age_sec: int = int(
+        os.environ.get("MEMORY_PROFILE_LLM_TRIGGER_AGE_SEC", "300")
+    )
     split_query_enabled: bool = _b("MEMORY_SPLIT_QUERY_ENABLED", "1")
     rerank_enabled: bool = _b("MEMORY_BUNDLE_RERANK_ENABLED", "1")
     observability: bool = _b("MEMORY_OBSERVABILITY", "1")

@@ -73,6 +73,10 @@ class MemoryEngine:
                     user_text=content,
                     source_message_id=int(message_id),
                 )
+            if mem_cfg.profile_enabled and role in ("user", "assistant"):
+                # MemMachine-like: count toward batch trigger on every turn.
+                if mem_cfg.profile_llm_propose:
+                    self._profile.note_message_for_llm_propose(int(user_id))
             if mem_cfg.profile_enabled and role == "assistant":
                 # Weak regex offer (legacy).
                 self._profile.maybe_capture_assistant_proposal(
@@ -80,7 +84,7 @@ class MemoryEngine:
                     assistant_text=content,
                     source_message_id=int(message_id),
                 )
-                # Primary: Chinese LLM propose → pending (consent still required).
+                # Batch-gated Chinese LLM propose → pending (consent still required).
                 if mem_cfg.profile_llm_propose and self._llm is not None:
                     try:
                         recent = self._store.list_recent_messages(int(user_id), limit=8)

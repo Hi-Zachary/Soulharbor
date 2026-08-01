@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS support_profile_pending (
 CREATE INDEX IF NOT EXISTS idx_profile_pending_user
   ON support_profile_pending(user_id, created_at DESC);
 
+-- MemMachine-like batch trigger cursor for profile LLM propose.
+CREATE TABLE IF NOT EXISTS support_profile_llm_state (
+  user_id INTEGER PRIMARY KEY,
+  uningested_messages INTEGER NOT NULL DEFAULT 0,
+  batch_started_at INTEGER NOT NULL DEFAULT 0,
+  last_attempt_at INTEGER NOT NULL DEFAULT 0,
+  last_attempt_message_id INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS memory_backfill_checkpoint (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -387,6 +396,9 @@ class EpisodeStore:
             )
             conn.execute("DELETE FROM support_profile_items WHERE user_id=?", (int(user_id),))
             conn.execute("DELETE FROM support_profile_pending WHERE user_id=?", (int(user_id),))
+            conn.execute(
+                "DELETE FROM support_profile_llm_state WHERE user_id=?", (int(user_id),)
+            )
             conn.execute("DELETE FROM memory_episode_embeddings WHERE user_id=?", (int(user_id),))
             conn.execute("DELETE FROM memory_embed_retry WHERE user_id=?", (int(user_id),))
             return int(cur.rowcount or 0)

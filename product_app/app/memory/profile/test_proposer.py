@@ -71,6 +71,8 @@ class ProfileProposerTests(unittest.TestCase):
             with patch("product_app.app.memory.config.mem_cfg") as cfg:
                 cfg.profile_llm_propose_max = 1
                 cfg.profile_llm_skip_if_pending = True
+                cfg.profile_llm_trigger_messages = 5
+                cfg.profile_llm_trigger_age_sec = 300
                 out = svc.maybe_llm_propose(
                     user_id=1,
                     llm=llm,
@@ -79,6 +81,7 @@ class ProfileProposerTests(unittest.TestCase):
                         {"role": "assistant", "content": "好的，我记下了这个偏好候选。"},
                     ],
                     source_message_id=2,
+                    force=True,
                 )
             self.assertIsNotNone(out)
             self.assertEqual(svc._db.count_pending(1), 1)
@@ -99,6 +102,8 @@ class ProfileProposerTests(unittest.TestCase):
             with patch("product_app.app.memory.config.mem_cfg") as cfg:
                 cfg.profile_llm_propose_max = 1
                 cfg.profile_llm_skip_if_pending = True
+                cfg.profile_llm_trigger_messages = 5
+                cfg.profile_llm_trigger_age_sec = 300
                 out = svc.maybe_llm_propose(
                     user_id=1,
                     llm=llm,
@@ -107,6 +112,7 @@ class ProfileProposerTests(unittest.TestCase):
                         {"role": "assistant", "content": "有红烧肉。"},
                     ],
                     source_message_id=2,
+                    force=True,
                 )
             self.assertIsNone(out)
             self.assertEqual(llm.calls, 1)
@@ -137,6 +143,8 @@ class ProfileProposerTests(unittest.TestCase):
             with patch("product_app.app.memory.config.mem_cfg") as cfg:
                 cfg.profile_llm_propose_max = 1
                 cfg.profile_llm_skip_if_pending = True
+                cfg.profile_llm_trigger_messages = 5
+                cfg.profile_llm_trigger_age_sec = 300
                 out = svc.maybe_llm_propose(
                     user_id=1,
                     llm=llm,
@@ -145,10 +153,59 @@ class ProfileProposerTests(unittest.TestCase):
                         {"role": "assistant", "content": "嗯。"},
                     ],
                     source_message_id=3,
+                    force=True,
                 )
             self.assertIsNone(out)
             self.assertEqual(llm.calls, 0)
             self.assertEqual(svc._db.count_pending(1), 1)
+
+
+    def test_batch_trigger_after_n_messages(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "p.db"
+            EpisodeStore(db).init()
+            svc = ProfileService(db)
+            llm = StubLLM(
+                {
+                    "proposals": [
+                        {
+                            "content": "希望先被倾听",
+                            "evidence": "希望先被倾听",
+                        }
+                    ]
+                }
+            )
+            with patch("product_app.app.memory.config.mem_cfg") as cfg:
+                cfg.profile_llm_propose_max = 1
+                cfg.profile_llm_skip_if_pending = True
+                cfg.profile_llm_trigger_messages = 3
+                cfg.profile_llm_trigger_age_sec = 99999
+                for _ in range(2):
+                    svc.note_message_for_llm_propose(1)
+                out = svc.maybe_llm_propose(
+                    user_id=1,
+                    llm=llm,
+                    recent_turns=[
+                        {"role": "user", "content": "我希望先被倾听"},
+                        {"role": "assistant", "content": "好。"},
+                    ],
+                    source_message_id=10,
+                )
+                self.assertIsNone(out)
+                self.assertEqual(llm.calls, 0)
+                svc.note_message_for_llm_propose(1)
+                out = svc.maybe_llm_propose(
+                    user_id=1,
+                    llm=llm,
+                    recent_turns=[
+                        {"role": "user", "content": "我希望先被倾听"},
+                        {"role": "assistant", "content": "好。"},
+                    ],
+                    source_message_id=11,
+                )
+                self.assertIsNotNone(out)
+                self.assertEqual(llm.calls, 1)
+                self.assertEqual(svc._db.count_pending(1), 1)
 
 
 if __name__ == "__main__":

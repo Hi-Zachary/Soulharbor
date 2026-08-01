@@ -247,3 +247,82 @@ class ProfileStore:
                 (int(user_id),),
             ).fetchone()
             return int(row["c"] if row else 0)
+
+    def bump_llm_uningested(self, user_id: int) -> int:
+        """Count a newly ingested message toward the next LLM-propose batch."""
+        now = int(time.time())
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT uningested_messages FROM support_profile_llm_state WHERE user_id=?",
+                (int(user_id),),
+            ).fetchone()
+            if not row:
+                conn.execute(
+                    "INSERT INTO support_profile_llm_state"
+                    "(user_id, uningested_messages, batch_started_at, "
+                    "last_attempt_at, last_attempt_message_id) "
+                    "VALUES(?, 1, ?, 0, 0)",
+                    (int(user_id), now),
+                )
+                return 1
+            prev = int(row["uningested_messages"] or 0)
+            if prev <= 0:
+                conn.execute(
+                    "UPDATE support_profile_llm_state SET "
+                    "uningested_messages = 1, batch_started_at = ? WHERE user_id=?",
+                    (now, int(user_id)),
+                )
+                return 1
+            conn.execute(
+                "UPDATE support_profile_llm_state SET "
+                "uningested_messages = uningested_messages + 1 WHERE user_id=?",
+                (int(user_id),),
+            )
+            return prev + 1
+
+    def should_attempt_llm_propose(
+        self,
+        user_id: int,
+        *,
+        trigger_messages: int,
+        trigger_age_sec: int,
+        now: int | None = None,
+    ) -> bool:
+        """True when uningested >= N or batch age exceeded (MemMachine-like)."""
+        ts = int(now if now is not None else time.time())
+        min_msgs = max(1, int(trigger_messages))
+        max_age = max(0, int(trigger_age_sec))
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT uningested_messages, batch_started_at FROM support_profile_llm_state "
+                "WHERE user_id=?",
+                (int(user_id),),
+            ).fetchone()
+            if not row:
+                return False
+            uningested = int(row["uningested_messages"] or 0)
+            started = int(row["batch_started_at"] or 0)
+            if uningested <= 0:
+                return False
+            if uningested >= min_msgs:
+                return True
+            if max_age > 0 and started > 0 and (ts - started) >= max_age:
+                return True
+            return False
+
+    def mark_llm_propose_attempted(self, user_id: int, message_id: int) -> None:
+        """Reset uningested counter after a propose attempt (even if empty)."""
+        now = int(time.time())
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO support_profile_llm_state"
+                "(user_id, uningested_messages, batch_started_at, "
+                "last_attempt_at, last_attempt_message_id) "
+                "VALUES(?, 0, 0, ?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET "
+                "uningested_messages = 0, "
+                "batch_started_at = 0, "
+                "last_attempt_at = excluded.last_attempt_at, "
+                "last_attempt_message_id = excluded.last_attempt_message_id",
+                (int(user_id), now, int(message_id)),
+            )

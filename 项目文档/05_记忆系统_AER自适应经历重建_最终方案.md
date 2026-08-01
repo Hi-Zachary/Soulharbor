@@ -8,13 +8,13 @@
 
 ## 0. 一句话与设计立场
 
-**SoulHarbor 的长期记忆不在写入时“理解”用户，只在查询时把原文编年重建成可用的经历证据。**
+**SoulHarbor 的长期记忆：Episode 不在写入时"理解"用户；Profile 仅经 consent 落库；查询时再把原文编年重建成可用的经历证据。**
 
 心理陪伴场景里，错误归纳的代价远高于漏召回：一次考试焦虑、一次冷战、一句气话，如果被系统写成“稳定特质”，会在后续对话里反复误导。因此：
 
-1. **写路径零 LLM**：消息按规则分块、向量化后原样入库（`store/` 原文库）。
-2. **读路径做全部智能**：混合召回 → 锚点扩窗（AER）→ 跨会话串链 → 覆盖度选择 → 渲染 `<memory>`。
-3. **唯一允许落库的“理解”**：Profile（关怀画像），且必须走 **提议 → 用户确认** 的 consent；政策层硬挡诊断词、人格标签、瞬时情绪。
+1. **Episode 写路径零 LLM**：消息按规则分块、BGE-M3 向量化后原样入库（`store/`）；不抽事实、不合并、不概括。
+2. **读路径做检索智能**：混合召回 → 锚点扩窗（AER）→ 跨会话串链 → 覆盖度选择 → 渲染 `<memory>`；可选 LLM 仅用于查询规划（及可选重排开关下的特征重排仍由代码完成）。
+3. **唯一允许落库的“理解”**：Profile（关怀画像）旁路。默认在助理回合后可由中文 LLM（`profile/proposer.py`）提议 **最多 1** 条候选进 **pending**（须对上用户原文证据；已有 pending 则不再抽）；用户确认后才写 active。显式「记住…」仍为正则快路径；政策层硬挡诊断词、人格标签、瞬时情绪。
 
 在 30 条长程咨询弧、固定 reader（MiniMax-M3）同协议对照 Mem0 时：**QA ≈91–93% vs 64%，内容 F1 ≈0.79–0.89 vs 0.48**。
 
@@ -92,7 +92,7 @@ product_app/app/memory/
 │    MemoryService.run_post_turn
 │      → MemoryEngine.ingest_message
 │           EpisodeIngestor：chunker → BGE-M3 → EpisodeStore
-│           ProfileService：显式记住 / 提议确认 / 忘掉
+│           ProfileService：显式记住 / LLM提议pending / 确认 / 忘掉
 │      → （独立）滚动会话摘要：裸基座（disable_adapter）
 │
 └─ 读（本轮生成前）
@@ -145,15 +145,15 @@ SQLite（与主库同文件或同路径策略由引擎构造时传入），逻�
 3. `upsert_chunks` → 对每块 `MemoryEmbedder.embed`；失败入 `memory_embed_retry`，后续 `process_embed_retries` 补跑。
 4. **Profile 旁路**（仅在开关打开时，`profile/service.py`）  
    - 用户「记住/别忘了…」→ 规则快路径 `create_explicit`；  
-   - **助理回合后**（`MEMORY_PROFILE_LLM_PROPOSE=1`，默认开）：中文 LLM（`profile/proposer.py`）从最近对话抽出支持偏好候选——**pending 为空**才抽、每次最多 `MEMORY_PROFILE_LLM_PROPOSE_MAX`（默认 **1**）条、须能对上用户原文证据 → `propose` 入 **pending**（**绝不直接写 active**）；再过 `policy`；闲聊由模型自行返回空列表，**不用关键词门控**；  
+   - **助理回合后**（`MEMORY_PROFILE_LLM_PROPOSE=1`，默认开）：借鉴 MemMachine **攒批再抽**——每条 user/assistant 消息计入 `support_profile_llm_state`；当未抽消息数 ≥ `MEMORY_PROFILE_LLM_TRIGGER_MESSAGES`（默认 **5**）或批次年龄 ≥ `MEMORY_PROFILE_LLM_TRIGGER_AGE_SEC`（默认 **300s**）时，才调用中文 LLM（`profile/proposer.py`）。**pending 为空**才抽、每次最多 `MEMORY_PROFILE_LLM_PROPOSE_MAX`（默认 **1**）条、须能对上用户原文证据 → `propose` 入 **pending**（**绝不直接写 active**）；再过 `policy`；闲聊由模型自行返回空列表，**不用关键词门控**；无论是否抽到候选，尝试后都会重置批次计数；  
    - 助理文本里「要不要我记住…」正则 offer 仍可作为弱补充；  
    - 用户整句「可以/对/好的…」→ `pop_all_pending`，**一次确认全部**为 `confirmed`；  
    - 「A 改成 B」/「我现在不要 A」→ `correct`；「忘掉/删掉…」→ 软删；「查看记忆」→ 仅已确认偏好；  
    - **政策拒绝**：诊断词、人格标签、瞬时情绪前缀等。  
-   - 与 MemMachine 差异：MemMachine 英文 LLM **攒批抽取后即写入画像**；SoulHarbor **单条候选 + 确认后才是记忆**。LongMemEval 评测已归档，不混入产品默认。
+   - 与 MemMachine 差异：MemMachine 英文 LLM **攒批抽取后即写入画像**；SoulHarbor **攒批 + 单条候选 + 确认后才是记忆**。LongMemEval 评测已归档，不混入产品默认。
 5. **会话摘要**（`MemoryService`，非 AER 长期记忆）：未摘要 token 超阈值时用裸基座生成滚动摘要，写入 `conversations.summary`，属于短期工作记忆。
 
-写路径**不做**：fact 抽取、合并覆盖、时间衰减关闭、层级晋升。历史块默认长期可召回，由读路径预算与相关性决定是否进入上下文。
+写路径对 Episode **不做**：fact 抽取、合并覆盖、时间衰减关闭、层级晋升。Profile 旁路是唯一可选用 LLM 的写入理解（只进 pending，确认后才 active）。历史块默认长期可召回，由读路径预算与相关性决定是否进入上下文。
 
 ---
 
@@ -242,6 +242,8 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 | `MEMORY_PROFILE_LLM_PROPOSE` | 1 | 助理回合后中文 LLM 提议 pending（仍需用户确认） |
 | `MEMORY_PROFILE_LLM_PROPOSE_MAX` | 1 | 每次最多提议条数 |
 | `MEMORY_PROFILE_LLM_SKIP_IF_PENDING` | 1 | 已有待确认时不再抽新候选 |
+| `MEMORY_PROFILE_LLM_TRIGGER_MESSAGES` | 5 | 未抽消息数达到此值才尝试 LLM 提议（MemMachine 式攒批） |
+| `MEMORY_PROFILE_LLM_TRIGGER_AGE_SEC` | 300 | 批次年龄（秒）达到此值也触发尝试；`0` 关闭年龄触发 |
 | `MEMORY_SPLIT_QUERY_ENABLED` | 1 | 比较句拆分 |
 | `MEMORY_BUNDLE_RERANK_ENABLED` | 1 | 特征重排（无 LLM） |
 | `MEMORY_EXPAND_MODE` | `adaptive` | `adaptive` \| `fixed` |
@@ -251,8 +253,11 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 | `MEMORY_CROSS_SESSION_LINKING` / `MEMORY_LINK_THRESHOLD` | 1 / 0.22 | 跨会话链 |
 | `MEMORY_CONTEXT_TOKEN_BUDGET` | 1600 | 注入预算 |
 | `MEMORY_SEMANTIC_TOP_K` / `MEMORY_LEXICAL_TOP_K` / `MEMORY_SEED_TOP_K` / `MEMORY_WINDOW_TOP_K` | 30 / 30 / 8 / 6 | 各阶段宽度 |
-| `MEMORY_WINDOW_MAX_MESSAGES` / `MEMORY_NEIGHBOR_*` | 10 / 2 / 2 | 窗上限 / 固定邻域 |
-| `MEMORY_CHUNK_*` / `MEMORY_ASSISTANT_WEIGHT` / `MEMORY_EMBED_RETRY_MAX` | 见源码 | 分块与嵌入 |
+| `MEMORY_WINDOW_MAX_MESSAGES` | 10 | 单窗消息上限 |
+| `MEMORY_NEIGHBOR_BEFORE` / `MEMORY_NEIGHBOR_AFTER` | 2 / 2 | `fixed` 扩窗邻域 |
+| `MEMORY_CHUNK_SOFT_LIMIT` / `MEMORY_CHUNK_TARGET_MIN` / `MEMORY_CHUNK_TARGET_MAX` | 500 / 150 / 350 | 分块阈值 |
+| `MEMORY_ASSISTANT_WEIGHT` | 0.55 | 语义召回时 assistant 块降权 |
+| `MEMORY_EMBED_RETRY_MAX` | 5 | 嵌入重试上限 |
 | `MEMORY_ANN_ENABLED` | 1 | 语义侧 FAISS 缓存；0 则 Python 循环 |
 | `MEMORY_OBSERVABILITY` | 1 | trace 日志 |
 
