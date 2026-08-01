@@ -68,16 +68,6 @@ if [[ -z "${SOULHARBOR_LLM_ADAPTER:-}" ]]; then
   fi
 fi
 
-# Auto-pick the extraction SFT adapter if present and not explicitly set.
-if [[ -z "${SOULHARBOR_LLM_EXTRACTION_ADAPTER:-}" ]]; then
-  if [[ -d "saves/qwen14b/lora/extraction_sft" ]]; then
-    export SOULHARBOR_LLM_EXTRACTION_ADAPTER="saves/qwen14b/lora/extraction_sft"
-    echo "Auto-picked SOULHARBOR_LLM_EXTRACTION_ADAPTER=${SOULHARBOR_LLM_EXTRACTION_ADAPTER}"
-  else
-    echo "WARN: no extraction_sft adapter in saves/qwen14b/lora/; extraction falls back to main adapter" >&2
-  fi
-fi
-
 if [[ -z "${SOULHARBOR_MEMORY_ENCODER_BASE:-}" ]]; then
   if [[ -f "models/encoders/bge-m3/config.json" ]]; then
     export SOULHARBOR_MEMORY_ENCODER_BASE="models/encoders/bge-m3"
@@ -92,9 +82,8 @@ fi
 export SOULHARBOR_LLM_4BIT="${SOULHARBOR_LLM_4BIT:-1}"
 export SOULHARBOR_MEMORY_EMBED_DEVICE="${SOULHARBOR_MEMORY_EMBED_DEVICE:-cuda}"
 export SOULHARBOR_CLASSIFIER_DEVICE="${SOULHARBOR_CLASSIFIER_DEVICE:-cuda}"
-export SOULHARBOR_MEMORY_RERANKER_DEVICE="${SOULHARBOR_MEMORY_RERANKER_DEVICE:-cpu}"
 export MEMORY_BACKEND="${MEMORY_BACKEND:-aer}"
-echo "VRAM policy: LLM_4BIT=${SOULHARBOR_LLM_4BIT} embed=${SOULHARBOR_MEMORY_EMBED_DEVICE} cls=${SOULHARBOR_CLASSIFIER_DEVICE} rerank=${SOULHARBOR_MEMORY_RERANKER_DEVICE} memory=${MEMORY_BACKEND}"
+echo "VRAM policy: LLM_4BIT=${SOULHARBOR_LLM_4BIT} embed=${SOULHARBOR_MEMORY_EMBED_DEVICE} cls=${SOULHARBOR_CLASSIFIER_DEVICE} memory=${MEMORY_BACKEND}"
 
 echo "Starting SoulHarbor Product App: port=${PORT}"
 exec uvicorn product_app.app.main:app --host 0.0.0.0 --port "${PORT}" --log-level info

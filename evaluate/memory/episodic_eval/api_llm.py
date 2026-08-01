@@ -66,9 +66,6 @@ class APILLM:
     def generate_summary(self, messages: Any, *, max_new_tokens: int = 512, system_text: str = "") -> str:
         return self._chat(messages, max_new_tokens, system_text, 0.3, route="summary")
 
-    def generate_task(self, messages: Any, *, max_new_tokens: int = 512, system_text: str = "", **kw: Any) -> str:
-        return self._chat(messages, max_new_tokens, system_text, 0.7, route="task")
-
     def generate(self, messages: Any, *, max_new_tokens: int = 512, system_text: str = "", **kw: Any) -> str:
         return self._chat(messages, max_new_tokens, system_text, 0.7, route="chat")
 

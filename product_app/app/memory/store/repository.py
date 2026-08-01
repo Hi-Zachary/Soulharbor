@@ -239,6 +239,20 @@ class EpisodeStore:
             ).fetchall()
             return [self._to_chunk(r) for r in rows]
 
+    def active_embedding_fingerprint(self, user_id: int) -> tuple:
+        """Cheap signature so the FAISS cache can detect ingest/forget without hooks."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n, "
+                "COALESCE(MAX(c.id), 0) AS max_id, "
+                "COALESCE(MAX(e.updated_at), 0) AS max_upd "
+                "FROM memory_episode_chunks c "
+                "JOIN memory_episode_embeddings e ON e.chunk_id=c.id "
+                "WHERE c.user_id=? AND c.is_deleted=0",
+                (int(user_id),),
+            ).fetchone()
+            return (int(row["n"] or 0), int(row["max_id"] or 0), int(row["max_upd"] or 0))
+
     def message_already_indexed(self, message_id: int) -> bool:
         with self._db() as conn:
             row = conn.execute(

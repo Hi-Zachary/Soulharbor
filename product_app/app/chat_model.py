@@ -25,7 +25,6 @@ class CancelCriteria(StoppingCriteria):
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", flags=re.DOTALL)
 
 CHAT_ADAPTER = "chat"
-TASK_ADAPTER = "task"
 
 
 def _strip_think(text: str) -> str:
@@ -63,9 +62,6 @@ class DualLoRAConfig:
     chat_adapter_path: str = ""
     chat_consult_scale: float = 0.7
     chat_casual_scale: float = 0.3
-    task_adapter_path: str = ""
-    task_adapter_scale: float = 1.0
-    summary_scale: float = 0.05  # unused: summary uses disable_adapter / base
     system_path: str = "prompts/system_soulharbor_zh.txt"
     load_in_4bit: bool = True
     device: str = "auto"
@@ -78,16 +74,11 @@ class DualLoRAConfig:
 
 class DualLoRAQwenEngine:
     """
-    Single 4-bit base + chat/task LoRA adapters with thread-safe switching.
+    Single 4-bit base + one chat LoRA, thread-safe scale switching.
 
-    - consult route: DPO LoRA at chat_consult_scale (default 0.7)
-    - casual route:  DPO LoRA at chat_casual_scale (default 0.3, light counseling tone)
-    - background tasks: extraction_sft LoRA at task_adapter_scale (default 1.0)
-    - memory rerank: chat (DPO) LoRA at chat_casual_scale (default 0.3), low temperature
-
-    GPU access is serialized via a lock so chat replies are not corrupted by
-    concurrent extraction/summary/rerank calls; post-turn work still runs in
-    background threads and overlaps with user reading the reply.
+    - consult: chat LoRA at chat_consult_scale (default 0.7)
+    - casual / structured: chat LoRA at chat_casual_scale (default 0.3)
+    - summary: base model with adapters disabled
     """
 
     def __init__(self, cfg: DualLoRAConfig) -> None:
@@ -130,19 +121,12 @@ class DualLoRAQwenEngine:
             base = AutoModelForCausalLM.from_pretrained(cfg.model_path, **model_kwargs)
 
         chat_path = _pick_latest_checkpoint_dir(cfg.chat_adapter_path) if cfg.chat_adapter_path else ""
-        task_path = _pick_latest_checkpoint_dir(cfg.task_adapter_path) if cfg.task_adapter_path else ""
-        if not task_path:
-            task_path = chat_path
-
         self._has_lora = bool(chat_path)
-        self._task_is_separate = bool(task_path and task_path != chat_path)
 
         if self._has_lora:
             from peft import PeftModel
 
             self.model = PeftModel.from_pretrained(base, chat_path, adapter_name=CHAT_ADAPTER)
-            if self._task_is_separate:
-                self.model.load_adapter(task_path, adapter_name=TASK_ADAPTER)
         else:
             self.model = base
 
@@ -163,13 +147,6 @@ class DualLoRAQwenEngine:
         self.model.set_adapter(CHAT_ADAPTER)
         scale = self.cfg.chat_consult_scale if is_consult else self.cfg.chat_casual_scale
         self._set_adapter_scale(CHAT_ADAPTER, scale)
-
-    def _activate_task(self) -> None:
-        if not self._has_lora:
-            return
-        adapter = TASK_ADAPTER if self._task_is_separate else CHAT_ADAPTER
-        self.model.set_adapter(adapter)
-        self._set_adapter_scale(adapter, self.cfg.task_adapter_scale)
 
     @torch.no_grad()
     def _build_history(self, messages: List[Dict[str, Any]], *, system_text: str = "") -> List[Dict[str, Any]]:
@@ -316,32 +293,15 @@ class DualLoRAQwenEngine:
             if worker.is_alive():
                 logger.warning("stream worker did not stop after cancel, detaching")
 
-    def generate_task(
+    def generate_structured(
         self,
         messages: List[Dict[str, str]],
         *,
-        max_new_tokens: int = 384,
-        temperature: float = 0.1,
+        max_new_tokens: int = 256,
+        temperature: float = 0.0,
         system_text: str = "",
     ) -> str:
-        with self._lock:
-            self._activate_task()
-            return self._generate_once(
-                messages,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                system_text=system_text,
-            )
-
-    def generate_rerank(
-        self,
-        messages: List[Dict[str, str]],
-        *,
-        max_new_tokens: int = 128,
-        temperature: float = 0.1,
-        system_text: str = "",
-    ) -> str:
-        """Memory rerank: chat adapter at casual scale, not extraction_sft."""
+        """Low-temp chat adapter (casual scale) for JSON / planner output."""
         with self._lock:
             self._activate_chat(is_consult=0)
             return self._generate_once(

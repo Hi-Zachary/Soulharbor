@@ -53,9 +53,6 @@ class ProfileService:
         """All active preferences for prompt injection (small set by design)."""
         return self.list_active(user_id)[: max(1, int(limit))]
 
-    def search(self, user_id: int, query: str, limit: int = 5) -> List[ProfileItem]:
-        return self._db.search(user_id, query, limit=limit)
-
     def delete(self, user_id: int, profile_id: str) -> bool:
         return self._db.soft_delete(user_id, profile_id)
 

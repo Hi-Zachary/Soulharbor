@@ -91,29 +91,6 @@ class ProfileStore:
                 )
             return items
 
-    def search(self, user_id: int, query: str, limit: int = 5) -> List[ProfileItem]:
-        """Rank by CJK unigram/bigram overlap (same idea as lexical BM25)."""
-        from product_app.app.memory.store.lexical_search import _tokenize
-
-        items = self.list_active(user_id)
-        q = (query or "").strip()
-        if not q:
-            return items[:limit]
-        q_terms = set(_tokenize(q))
-        if not q_terms:
-            return items[:limit]
-
-        def score(item: ProfileItem) -> float:
-            body = item.content or ""
-            # Prefer whole-query substring, then n-gram overlap.
-            hit = 1.0 if q in body else 0.0
-            overlap = len(q_terms & set(_tokenize(body))) / float(len(q_terms))
-            return hit * 2.0 + overlap
-
-        ranked = sorted(((score(item), item) for item in items), key=lambda p: p[0], reverse=True)
-        matched = [item for sc, item in ranked if sc > 0]
-        return (matched or items)[:limit]
-
     def soft_delete(self, user_id: int, profile_id: str) -> bool:
         with self._conn() as conn:
             cur = conn.execute(

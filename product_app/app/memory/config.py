@@ -16,10 +16,7 @@ class MemorySettings:
     store_enabled: bool = _b("MEMORY_STORE_ENABLED", "1")
     profile_enabled: bool = _b("MEMORY_PROFILE_ENABLED", "1")
     split_query_enabled: bool = _b("MEMORY_SPLIT_QUERY_ENABLED", "1")
-    iterative_retrieval_enabled: bool = _b("MEMORY_ITERATIVE_RETRIEVAL_ENABLED", "0")
-    dual_write: bool = _b("MEMORY_DUAL_WRITE", "0")
     rerank_enabled: bool = _b("MEMORY_BUNDLE_RERANK_ENABLED", "1")
-    llm_rerank_enabled: bool = _b("MEMORY_LLM_RERANK_ENABLED", "0")
     observability: bool = _b("MEMORY_OBSERVABILITY", "1")
 
     # Adaptive Experience Reconstruction
@@ -47,6 +44,8 @@ class MemorySettings:
     chunk_target_max: int = int(os.environ.get("MEMORY_CHUNK_TARGET_MAX", "350"))
     assistant_weight: float = float(os.environ.get("MEMORY_ASSISTANT_WEIGHT", "0.55"))
     embed_retry_max: int = int(os.environ.get("MEMORY_EMBED_RETRY_MAX", "5"))
+    # FAISS IndexFlatIP over stored BGE vectors (fallback: Python cosine loop).
+    ann_enabled: bool = _b("MEMORY_ANN_ENABLED", "1")
 
 
 # module-level settings used by store / retrieval

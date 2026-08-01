@@ -63,11 +63,10 @@ class RetrievalPipeline:
         self._direct = DirectRetriever(semantic, lexical)
         self._split = SplitQueryRetriever(self._direct)
         self._expander = WindowExpander(store, self._embedder)
-        self._reranker = WindowReranker(llm)
+        self._reranker = WindowReranker()
         self._router = QueryRouter(llm)
 
     def set_llm(self, llm: Any) -> None:
-        self._reranker.set_llm(llm)
         self._router.set_llm(llm)
 
     def run(

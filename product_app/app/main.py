@@ -306,9 +306,6 @@ def _startup() -> None:
             system=settings.llm_system,
             load_4bit=settings.llm_load_4bit,
             device=settings.llm_device,
-            extraction_adapter=settings.llm_extraction_adapter,
-            extraction_adapter_scale=settings.llm_extraction_adapter_scale,
-            summary_adapter_scale=settings.llm_summary_adapter_scale,
             max_new_tokens=settings.llm_max_new_tokens,
         )
     )

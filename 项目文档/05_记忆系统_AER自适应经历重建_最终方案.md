@@ -53,7 +53,8 @@ product_app/app/memory/
 │   ├── ingest.py           # EpisodeIngestor：分块写入 + 向量
 │   ├── repository.py       # EpisodeStore：SQLite
 │   ├── chunker.py          # 确定性中文分块
-│   ├── semantic.py     # SemanticSearcher（BGE-M3 cosine）
+│   ├── semantic.py     # SemanticSearcher（FAISS / cosine 回退）
+│   ├── ann_index.py        # 按用户 FAISS 缓存
 │   ├── lexical_search.py   # LexicalSearcher（字级 BM25）
 │   ├── fusion.py           # RRF
 │   ├── expand.py      # WindowExpander：自适应 / 固定扩窗 ★
@@ -167,8 +168,8 @@ SQLite（与主库同文件或同路径策略由引擎构造时传入），逻�
 
 ### 6.2 Hybrid 召回 → Seeds
 
-- **SemanticSearcher**：BGE-M3 cosine；assistant 块分数 × `MEMORY_ASSISTANT_WEIGHT`（默认 0.55）。  
-- **LexicalSearcher**：字级 unigram + bigram BM25（中文友好，不依赖分词器）。  
+- **SemanticSearcher**：默认 FAISS `IndexFlatIP`（归一化向量上的内积 ≈ cosine），按 `user_id` 进程内缓存；`active_embedding_fingerprint` 变化时重建；`MEMORY_ANN_ENABLED=0` 或 faiss 不可用时回退 Python 循环。assistant 块仍 × `MEMORY_ASSISTANT_WEIGHT`。  
+- **LexicalSearcher**：字级 unigram + bigram BM25（中文友好，不依赖分词器）；仍扫该用户活跃文本。  
 - **RRF**（`fusion.reciprocal_rank`，k=60）融合，取 `MEMORY_SEED_TOP_K`（默认 8）作为 seeds。  
 - split 模式：各子查询各自召回后再 RRF 合并（`split_query.py`）。
 
@@ -198,7 +199,6 @@ s =&\; 0.40\cdot\mathrm{cos}(c,\mathrm{pivot}) + 0.22\cdot\mathrm{cos}(c,\mathrm
 ### 6.4 合并、重排、串链、覆盖选择
 
 1. **span_merge**：同会话位置重叠的 span 合并，控制消息上限。  
-2. **span_rank**：特征分（融合分、查询重叠、含 user、含结束启发式、长度惩罚）；可选 LLM 重排（默认关）。池子约 `2 × MEMORY_WINDOW_TOP_K`。  
 3. **chain_link**：跨会话贪心串链（实体 / 语义 / 时间序 / 查询增益 / 同会话奖励），链内按时间排序，打上 `chain_id`（E1/E2…）。时间分按间隔**指数衰减**：`time = max(0.05, 0.35·exp(−days/90))`（同天 ≈0.35，90 天 ≈0.12，约 180 天到 0.05 下限）；倒序但 3 天内给 0.15，更早的倒序给 0——即"越近的经历越值得串链，太远的旧事不该被硬拉进当前话题"。  
 4. **coverage**（默认）：贪心选 `MEMORY_WINDOW_TOP_K`（6），目标 ≈  
    `相关 + 新信息覆盖 + 查询增益 + 时间桶多样性 − 与已选冗余`。  
@@ -239,7 +239,7 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 | `MEMORY_STORE_ENABLED` | 1 | Chronicle 读写 |
 | `MEMORY_PROFILE_ENABLED` | 1 | Profile |
 | `MEMORY_SPLIT_QUERY_ENABLED` | 1 | 比较句拆分 |
-| `MEMORY_BUNDLE_RERANK_ENABLED` / `MEMORY_LLM_RERANK_ENABLED` | 1 / 0 | 特征 / LLM 重排 |
+| `MEMORY_BUNDLE_RERANK_ENABLED` | 1 | 特征重排（无 LLM） |
 | `MEMORY_EXPAND_MODE` | `adaptive` | `adaptive` \| `fixed` |
 | `MEMORY_CONTINUITY_THRESHOLD` | 0.28 | 扩窗阈值 |
 | `MEMORY_EXPAND_MAX_SPAN` | 12 | 最大位置跨度 |
@@ -249,6 +249,7 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 | `MEMORY_SEMANTIC_TOP_K` / `MEMORY_LEXICAL_TOP_K` / `MEMORY_SEED_TOP_K` / `MEMORY_WINDOW_TOP_K` | 30 / 30 / 8 / 6 | 各阶段宽度 |
 | `MEMORY_WINDOW_MAX_MESSAGES` / `MEMORY_NEIGHBOR_*` | 10 / 2 / 2 | 窗上限 / 固定邻域 |
 | `MEMORY_CHUNK_*` / `MEMORY_ASSISTANT_WEIGHT` / `MEMORY_EMBED_RETRY_MAX` | 见源码 | 分块与嵌入 |
+| `MEMORY_ANN_ENABLED` | 1 | 语义侧 FAISS 缓存；0 则 Python 循环 |
 | `MEMORY_OBSERVABILITY` | 1 | trace 日志 |
 
 `product_app/start.sh` 默认 `export MEMORY_BACKEND=aer`。
@@ -495,7 +496,6 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 - temporal 类题相对弱（约 60–73%），可补显式时间锚。  
 - stale 主要靠读路径相关选择与结束启发式，无写时生命周期状态机。  
 - 评测集 30 条偏小；外部 LongMemEval 等可后续扩展。  
-- 默认关闭 LLM 重排：稳、快；打开则注意延迟与解析失败回退。
 
 ---
 
