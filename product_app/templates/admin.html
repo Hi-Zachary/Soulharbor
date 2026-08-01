@@ -374,12 +374,12 @@
       async function loadProfileWorkspace(hash) {
         const data = await fetchJson(`/admin/api/user-profile-workspace?user_id_hash=${encodeURIComponent(hash)}`);
         const detail = data.detail;
-        const memories = detail.memories || [];
+        const prefs = detail.preferences || detail.memories || [];
         const metrics = detail.recent_metrics || [];
         const stats = detail.stats || {};
-        const typeColors = { profile: '#0d9488', preference: '#6366f1', situation: '#3b82f6' };
-        let html = `<div class="rounded-2xl border border-sky-200 bg-white/80 p-4"><div class="text-sm font-bold text-sky-800">${esc(hash)} · 简要画像</div><div class="mt-2 text-xs text-slate-600">会话 ${Number(stats.conversation_count || 0)} · 消息 ${Number(stats.message_count || 0)} · 最近活跃 ${fmtTime(stats.last_seen)}</div><div class="mt-4 space-y-3 text-xs leading-6 text-slate-600">`;
-        html += `<div><div class="font-semibold text-slate-700">长期记忆摘要</div><div>${memories.length ? memories.map((m) => `<div class="rounded-xl border p-3 mb-2 text-sm bg-white" style="border-left:3px solid ${typeColors[m.type] || '#cbd5e1'}"><div class="flex items-center gap-2 mb-2"><span class="mem-type" style="background:${typeColors[m.type] || '#cbd5e1'}15;color:${typeColors[m.type] || '#64748b'}">${esc(m.type)}</span><span class="font-medium text-slate-800">${esc(m.title)}</span></div><div class="text-slate-600 leading-relaxed">${esc(m.summary)}</div></div>`).join('') : '暂无长期记忆'}</div></div>`;
+        const chunks = Number(detail.episode_chunks || 0);
+        let html = `<div class="rounded-2xl border border-sky-200 bg-white/80 p-4"><div class="text-sm font-bold text-sky-800">${esc(hash)} · 简要画像</div><div class="mt-2 text-xs text-slate-600">会话 ${Number(stats.conversation_count || 0)} · 消息 ${Number(stats.message_count || 0)} · Episode 块 ${chunks} · 最近活跃 ${fmtTime(stats.last_seen)}</div><div class="mt-4 space-y-3 text-xs leading-6 text-slate-600">`;
+        html += `<div><div class="font-semibold text-slate-700">已确认支持偏好</div><div>${prefs.length ? prefs.map((m) => `<div class="rounded-xl border p-3 mb-2 text-sm bg-white border-l-[3px] border-l-teal-500"><div class="flex items-center gap-2 mb-1"><span class="mem-type" style="background:#0d948815;color:#0d9488">${esc(m.origin || 'confirmed')}</span></div><div class="text-slate-700 leading-relaxed">${esc(m.content || '')}</div></div>`).join('') : '暂无已确认偏好'}</div></div>`;
         html += `<div><div class="font-semibold text-slate-700">近期分流记录</div><div>${metrics.length ? metrics.slice(0, 5).map((m) => `• ${fmtTime(m.created_at)} · ${esc(routeLabel(m.route || (m.is_consult ? 'consult' : 'chat')))}`).join('<br>') : '暂无记录'}</div></div>`;
         html += `</div></div>`;
         document.getElementById('profile-box').innerHTML = html;
@@ -446,12 +446,13 @@
         document.getElementById('profile-meta').textContent = esc(hash);
         const j = await fetchJson('/admin/api/users/' + hash + '/profile');
         const p = j.profile;
-        document.getElementById('profile-meta').textContent = esc(hash) + ' · ' + p.memories.length + ' 条活跃记忆';
-        const typeColors = { profile: '#0d9488', preference: '#6366f1', situation: '#3b82f6' };
+        const prefs = p.preferences || p.memories || [];
+        const chunks = Number(p.episode_chunks || 0);
+        document.getElementById('profile-meta').textContent = esc(hash) + ' · ' + prefs.length + ' 条偏好 · ' + chunks + ' 个 Episode 块';
         let html = `<div class="flex gap-2 mb-4"><button class="px-3 py-1.5 rounded-lg bg-teal-500 text-white text-xs font-medium hover:bg-teal-600 transition-colors" onclick="closeProfile();viewUserConversations('${hash}')">查看该用户全部会话</button></div>`;
-        html += '<div class="font-semibold text-sm text-teal-800 mb-3">长期记忆</div>';
-        if (p.memories.length === 0) html += '<div class="text-sm text-slate-400 py-4">暂无活跃记忆</div>';
-        else for (const m of p.memories) html += `<div class="rounded-xl border p-3 mb-2 text-sm bg-white" style="border-left:3px solid ${typeColors[m.type] || '#cbd5e1'}"><div class="flex items-center gap-2 mb-2"><span class="mem-type" style="background:${typeColors[m.type]}15;color:${typeColors[m.type]}">${esc(m.type)}</span><span class="font-medium text-slate-800">${esc(m.title)}</span></div><div class="text-slate-600 leading-relaxed">${esc(m.summary)}</div>${m.how_to_apply ? `<div class="text-xs text-teal-600 mt-1">应用：${esc(m.how_to_apply)}</div>` : ''}${m.expires_at ? `<div class="text-xs text-slate-400 mt-1">过期：${fmtTime(m.expires_at)}</div>` : ''}</div>`;
+        html += '<div class="font-semibold text-sm text-teal-800 mb-3">已确认支持偏好</div>';
+        if (prefs.length === 0) html += '<div class="text-sm text-slate-400 py-4">暂无已确认偏好</div>';
+        else for (const m of prefs) html += `<div class="rounded-xl border p-3 mb-2 text-sm bg-white border-l-[3px] border-l-teal-500"><div class="flex items-center gap-2 mb-1"><span class="mem-type" style="background:#0d948815;color:#0d9488">${esc(m.origin || 'confirmed')}</span></div><div class="text-slate-700 leading-relaxed">${esc(m.content || '')}</div></div>`;
         if (p.conversations?.length) html += '<div class="font-semibold text-sm text-teal-800 mt-4 mb-2">历史会话</div>' + p.conversations.slice(0, 10).map(c => `<div class="flex items-center justify-between p-2.5 rounded-lg hover:bg-gray-100 cursor-pointer text-sm transition-colors" onclick="closeProfile();openReplay('${c.sid}')"><span class="truncate text-slate-700">${esc(c.title || '会话')}</span><span class="text-xs text-slate-400 ml-3 flex-shrink-0">${c.msg_count} 条 · ${fmtTime(c.last_active)}</span></div>`).join('');
         document.getElementById('profile-content').innerHTML = html;
       }

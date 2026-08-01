@@ -78,7 +78,7 @@ product_app/app/memory/
 └── commands/               # remember / forget / inspect / correct
 ```
 
-运维脚本：`scripts/memory/`（`backfill_episodes.py` / `verify_index.py` / `migrate_profiles.py` / `compare_backends.py`）。
+运维脚本：`scripts/memory/`（`backfill_episodes.py` / `verify_index.py` / `migrate_profiles.py` / `smoke_recall.py`）。
 
 评测：`evaluate/memory/data/all_30.jsonl`（构建见 §9）+ `episodic_eval/` + `runs/`。
 

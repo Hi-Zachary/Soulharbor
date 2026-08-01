@@ -73,7 +73,7 @@ def main() -> int:
     db_path = Path(args.db)
     engine = MemoryEngine(db_path)
     ck_key = f"backfill:{args.user_id or 'all'}"
-    after = int(engine._repo.get_checkpoint(ck_key) or "0")
+    after = int(engine._store.get_checkpoint(ck_key) or "0")
     stats = {"scanned": 0, "indexed": 0, "chunks": 0, "dry_run": args.dry_run}
     t0 = time.time()
     while True:
@@ -92,7 +92,7 @@ def main() -> int:
             if args.max_messages and stats["scanned"] >= args.max_messages:
                 break
         if not args.dry_run:
-            engine._repo.set_checkpoint(ck_key, str(after))
+            engine._store.set_checkpoint(ck_key, str(after))
         if args.max_messages and stats["scanned"] >= args.max_messages:
             break
         if len(batch) < args.batch:

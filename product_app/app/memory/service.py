@@ -230,10 +230,14 @@ class MemoryService:
 
     def get_user_profile(self, user_id: int) -> Dict[str, object]:
         detail = self._engine.inspect(user_id)
+        prefs = detail.get("support_preferences") or []
         return {
-            "memories": detail.get("support_preferences") or [],
+            # Admin / API: active consent preferences.
+            "memories": prefs,
+            "preferences": prefs,
             "conversations": [],
             "episode_chunks": detail.get("episode_chunks") or 0,
+            "embeddings": detail.get("embeddings") or 0,
             "backend": detail.get("backend") or "aer",
         }
 

@@ -11,7 +11,7 @@ def _b(name: str, default: str = "1") -> bool:
 
 @dataclass(frozen=True)
 class MemorySettings:
-    # legacy | aer
+    # aer only (other values disable long-term memory)
     backend: str = os.environ.get("MEMORY_BACKEND", "aer")
     store_enabled: bool = _b("MEMORY_STORE_ENABLED", "1")
     profile_enabled: bool = _b("MEMORY_PROFILE_ENABLED", "1")

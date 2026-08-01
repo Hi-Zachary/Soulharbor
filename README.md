@@ -12,7 +12,7 @@ SoulHarbor/
 ├── product_app/          # FastAPI Web 应用（唯一运行入口）
 │   └── app/memory/       # 长期记忆：AER（原文库 + 查询时重建，backend=aer）
 ├── prompts/              # 主对话 system：system_soulharbor_zh.txt
-├── scripts/memory/       # 记忆运维：backfill / verify_index / migrate_profiles / compare_backends
+├── scripts/memory/       # 记忆运维：backfill / verify_index / migrate_profiles / smoke_recall
 ├── models/               # Qwen3-14B + chinese-macbert-base + bge-m3（本地，不入库）
 ├── saves/qwen14b/lora/   # dpo_synth_* 对话 LoRA（本地，不入库）
 ├── outputs/classifiers/  # 意图分类器（本地，不入库）

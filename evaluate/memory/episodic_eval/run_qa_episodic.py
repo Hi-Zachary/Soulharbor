@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Long-horizon QA eval for SoulHarbor episodic memory (API LLM).
 
-Only evaluates the new episodic backend (no Mem0 / no legacy Full).
+Only evaluates the AER episodic backend (Mem0 baseline is a separate harness).
 Mem0 baseline from 2026-07-30 remains the frozen reference.
 
   python run_qa_episodic.py --selftest

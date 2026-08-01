@@ -118,11 +118,6 @@ _TURN_METRICS_DROP_COLUMNS = (
     "emotion_prob",
 )
 
-_CONVERSATION_COLUMN_MIGRATIONS = [
-    ("last_extracted_msg_id", "INTEGER NOT NULL DEFAULT 0"),
-]
-
-
 def _now_ts() -> int:
     return int(time.time())
 
@@ -224,9 +219,9 @@ class SQLiteStore:
             conn.commit()
         finally:
             conn.close()
-        self._migrate_columns("conversations", _CONVERSATION_COLUMN_MIGRATIONS)
         for col in _TURN_METRICS_DROP_COLUMNS:
             self._drop_column_if_exists("turn_metrics", col)
+        self._drop_column_if_exists("conversations", "last_extracted_msg_id")
         for table in _LEGACY_DROP_TABLES:
             self._drop_table_if_exists(table)
 
@@ -565,12 +560,48 @@ class SQLiteStore:
             return out
         finally:
             conn.close()
+
+    def get_user_activity_stats(self, user_id: int) -> Dict[str, Any]:
+        """Conversation / message / recent-route stats for admin profile panels."""
+        conn = self._connect()
+        try:
+            uid = int(user_id)
+            stats = conn.execute(
+                "SELECT "
+                "  (SELECT COUNT(*) FROM conversations WHERE user_id=?) as conversation_count, "
+                "  (SELECT COUNT(*) FROM messages WHERE conversation_id IN "
+                "     (SELECT id FROM conversations WHERE user_id=?)) as message_count, "
+                "  (SELECT MAX(updated_at) FROM conversations WHERE user_id=?) as last_seen",
+                (uid, uid, uid),
+            ).fetchone()
+            recent_metrics = conn.execute(
+                "SELECT tm.created_at, tm.route, tm.is_consult "
+                "FROM turn_metrics tm JOIN conversations c ON c.id=tm.conversation_id "
+                "WHERE c.user_id=? ORDER BY tm.id DESC LIMIT 8",
+                (uid,),
+            ).fetchall()
+            return {
+                "conversation_count": int(stats["conversation_count"] or 0),
+                "message_count": int(stats["message_count"] or 0),
+                "last_seen": int(stats["last_seen"] or 0),
+                "recent_metrics": [
+                    {
+                        "created_at": int(r["created_at"]),
+                        "route": str(r["route"] or ""),
+                        "is_consult": int(r["is_consult"] or 0),
+                    }
+                    for r in recent_metrics
+                ],
+            }
+        finally:
+            conn.close()
+
     def get_conversation(self, sid: str) -> Optional[Dict[str, Any]]:
         conn = self._connect()
         try:
             row = conn.execute(
-                "SELECT id, sid, title, user_id, created_at, updated_at, summary, summary_updated_at, last_summarized_msg_id, "
-                "last_extracted_msg_id "
+                "SELECT id, sid, title, user_id, created_at, updated_at, summary, "
+                "summary_updated_at, last_summarized_msg_id "
                 "FROM conversations WHERE sid=?",
                 ((sid or "").strip(),),
             ).fetchone()
@@ -587,9 +618,6 @@ class SQLiteStore:
                 "summary_updated_at": (None if row["summary_updated_at"] is None else int(row["summary_updated_at"])),
                 "last_summarized_msg_id": (
                     None if row["last_summarized_msg_id"] is None else int(row["last_summarized_msg_id"])
-                ),
-                "last_extracted_msg_id": (
-                    None if row["last_extracted_msg_id"] is None else int(row["last_extracted_msg_id"])
                 ),
             }
         finally:
@@ -608,24 +636,6 @@ class SQLiteStore:
             conn.execute(
                 "UPDATE conversations SET summary=?, summary_updated_at=?, last_summarized_msg_id=?, updated_at=? WHERE sid=?",
                 ((summary or "").strip(), now, int(last_msg_id), now, sid),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    def get_last_extracted_msg_id(self, sid: str) -> int:
-        conv = self.get_conversation(sid)
-        if not conv:
-            return 0
-        return int(conv.get("last_extracted_msg_id") or 0)
-
-    def set_last_extracted_msg_id(self, sid: str, msg_id: int) -> None:
-        conn = self._connect()
-        try:
-            now = _now_ts()
-            conn.execute(
-                "UPDATE conversations SET last_extracted_msg_id=?, updated_at=? WHERE sid=?",
-                (int(msg_id), now, sid),
             )
             conn.commit()
         finally:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-compare memory blocks for a fixed query."""
+"""Smoke-print AER recall block + trace for a fixed query."""
 from __future__ import annotations
 
 import argparse

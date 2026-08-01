@@ -1,4 +1,4 @@
-"""Admin memory_count should use AER tables, not legacy memory_nodes."""
+"""Admin memory_count uses AER episode chunks + active profiles."""
 from __future__ import annotations
 
 import tempfile

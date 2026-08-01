@@ -936,8 +936,13 @@ async def admin_user_profile_workspace(user_id_hash: str, admin: Optional[str] =
     if uid is None:
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
     detail = _MEMORY.get_user_profile(int(uid))
-    if detail is None:
-        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    activity = _DB.get_user_activity_stats(int(uid))
+    detail["stats"] = {
+        "conversation_count": activity["conversation_count"],
+        "message_count": activity["message_count"],
+        "last_seen": activity["last_seen"],
+    }
+    detail["recent_metrics"] = activity["recent_metrics"]
     return JSONResponse({"ok": True, "detail": detail})
 
 
@@ -957,8 +962,16 @@ async def admin_user_profile(user_id_hash: str, admin: Optional[str] = Cookie(de
     if uid is None:
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
     profile = _MEMORY.get_user_profile(uid)
-    if profile is None:
-        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    convs = _DB.list_conversations_for_user(int(uid), limit=30)
+    profile["conversations"] = [
+        {
+            "sid": c["sid"],
+            "title": c["title"],
+            "msg_count": c["message_count"],
+            "last_active": c["updated_at"],
+        }
+        for c in convs
+    ]
     return JSONResponse({"ok": True, "profile": profile})
 
 
