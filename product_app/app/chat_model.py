@@ -65,7 +65,7 @@ class DualLoRAConfig:
     chat_casual_scale: float = 0.3
     task_adapter_path: str = ""
     task_adapter_scale: float = 1.0
-    summary_scale: float = 0.05
+    summary_scale: float = 0.05  # unused: summary uses disable_adapter / base
     system_path: str = "prompts/system_soulharbor_zh.txt"
     load_in_4bit: bool = True
     device: str = "auto"
@@ -359,17 +359,13 @@ class DualLoRAQwenEngine:
         temperature: float = 0.3,
         system_text: str = "",
     ) -> str:
-        """Summary generation: chat adapter at very low scale (close to base)."""
-        with self._lock:
-            if self._has_lora:
-                self.model.set_adapter(CHAT_ADAPTER)
-                self._set_adapter_scale(CHAT_ADAPTER, self.cfg.summary_scale)
-            return self._generate_once(
-                messages,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                system_text=system_text,
-            )
+        """Session summary: pure base model (no chat LoRA / DPO style bleed)."""
+        return self.generate_base(
+            messages,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            system_text=system_text,
+        )
 
     def generate_base(
         self,

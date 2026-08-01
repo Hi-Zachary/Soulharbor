@@ -18,7 +18,7 @@
 
 在 30 条长程咨询弧、固定 reader（MiniMax-M3）同协议对照 Mem0 时：**QA ≈91–93% vs 64%，内容 F1 ≈0.79–0.89 vs 0.48**。
 
-**这个立场不是凭空想出来的，而是一步步被证据逼出来的**。仓库 `archive/` 保留了完整演进链：最初的 LLM 抽取式五工具 CRUD（flat，`extraction_sft`）在"过度记忆率"上从 0.88 压到 0.28 仍无法根除写时污染；随后是 L1/L2/L3 分层 + Dream Gate（`archive/legacy_layered_memory_20260731/`），复杂度高但底层仍是抽取；接着是按 MemMachine 思想做的无图联想式 episodic 重构（存原文 + 检索扩上下文）；再往前一步是带写时 Psychological Reconciler 的 pre-AER（`archive/memory_pre_aer_20260731_145159/`）；最后才删掉写时调和器，补上**自适应边界扩窗 + 覆盖度感知选择 + 跨会话经历链**，形成现在的 AER。答辩时讲这段演进，比单讲结果更能说明"为什么这样做"。
+**这个立场是被证据逼出来的**：早期写时抽取 / 分层调和无法从结构上消除"写错标签"；后来转向存原文，再删掉写时调和器，补上自适应扩窗、覆盖度选择与跨会话经历链，才形成现在的 AER。中间态快照在 `archive/`，答辩可对照；线上文档只描述 AER 终态。
 
 ---
 
@@ -92,20 +92,19 @@ product_app/app/memory/
 │      → MemoryEngine.ingest_message
 │           EpisodeIngestor：chunker → BGE-M3 → EpisodeStore
 │           ProfileService：显式记住 / 提议确认 / 忘掉
-│      → （独立）滚动会话摘要：chat LoRA @ low scale
+│      → （独立）滚动会话摘要：裸基座（disable_adapter）
 │
 └─ 读（本轮生成前）
      MemoryService.build_chat_context
        ① 会话摘要块 <session-so-far>（若有）
-       ② 未摘要的近期原文（verbatim 窗）
-       ③ 若用户开启长期记忆：
+       ② 若用户开启长期记忆：
             MemoryEngine.build_context
               RetrievalPipeline.run
                 router → hybrid seeds → WindowExpander
                 → merge → rerank → chain_link → coverage
-                → Profile search
+                → Profile 全量注入
               → format → <memory> + _MEMORY_SYSTEM_PREFIX
-       ④ 近期 chat turns
+       ③ 自上次摘要以来的原文（verbatim 窗）
 ```
 
 设计要点：
@@ -127,7 +126,7 @@ SQLite（与主库同文件或同路径策略由引擎构造时传入），逻�
 | `memory_embed_retry` | 嵌入失败重试（`attempts` 上限见 `MEMORY_EMBED_RETRY_MAX`） |
 | `support_profile_items` | ProfileItem：`origin ∈ {explicit, confirmed}`，`status ∈ {active, deleted}` |
 | `support_profile_sources` | 画像 ↔ 来源 message_id |
-| `support_profile_pending` | 助理提议、待确认（每用户通常保留最新） |
+| `support_profile_pending` | 助理提议队列（每用户最多 8 条；确认时按先进先出全部落库） |
 | `memory_backfill_checkpoint` | 历史回填断点 |
 
 **幂等**：同 `(message_id, chunk_index)` 重写不产生重复块。  
@@ -143,13 +142,14 @@ SQLite（与主库同文件或同路径策略由引擎构造时传入），逻�
    - 长度 ≤ `MEMORY_CHUNK_SOFT_LIMIT`（默认 500）→ 整段一块；  
    - 否则按 `。！？；\n` 切开，再按 `TARGET_MIN/MAX`（150–350）合并。
 3. `upsert_chunks` → 对每块 `MemoryEmbedder.embed`；失败入 `memory_embed_retry`，后续 `process_embed_retries` 补跑。
-4. **Profile 旁路**（仅在开关打开时）  
-   - 用户「记住/别忘了…」→ `detector` 抽内容 → `create_explicit`；  
-   - 助理「要不要我记住…」→ `propose` 写 pending（先过 `policy`）；  
-   - 用户「可以/对/好」→ `create_confirmed`；  
-   - 「忘掉/删掉…」→ `commands/forget` 软删画像与相关块；  
+4. **Profile 旁路**（仅在开关打开时，`profile/service.py`）  
+   - 用户「记住/别忘了…」→ `create_explicit`；  
+   - 助理「要不要我记住…」→ `propose` 入 pending 队列（最多 8，不覆盖旧项；先过 `policy`）；  
+   - 用户整句「可以/对/好的…」→ `pop_all_pending`，**一次确认全部**为 `confirmed`；  
+   - 「A 改成 B」/「我现在不要 A」→ `correct`（软删匹配项，可选写入新内容）；  
+   - 「忘掉/删掉…」→ 软删画像与可匹配原文块；「查看记忆」→ 仅返回已确认偏好清单；  
    - **政策拒绝**：诊断词、人格标签、瞬时情绪前缀、与来源无足够字符重叠等。
-5. **会话摘要**（`MemoryService`，非 Chronicle）：未摘要 token 超阈值时用主对话 adapter 低 scale 生成滚动摘要，写入 `conversations.summary`，属于短期工作记忆。
+5. **会话摘要**（`MemoryService`，非 AER 长期记忆）：未摘要 token 超阈值时用裸基座生成滚动摘要，写入 `conversations.summary`，属于短期工作记忆。
 
 写路径**不做**：fact 抽取、合并覆盖、时间衰减关闭、层级晋升。历史块默认长期可召回，由读路径预算与相关性决定是否进入上下文。
 
@@ -161,8 +161,9 @@ SQLite（与主库同文件或同路径策略由引擎构造时传入），逻�
 
 ### 6.1 查询路由（`retrieval/router.py`）
 
-- 默认 `direct`：单查询。  
-- 比较类句式（以前/现在、两次、区别…）→ `split`，拆成 ≤3 个子查询（当前 / 过去 / 差异）；可选 LLM 辅助，失败回退启发式。
+- **无关键词 / 正则门控**。`MEMORY_SPLIT_QUERY_ENABLED=0` 时整句 `direct`。  
+- 有 LLM 时：用 `_PLANNER_SYSTEM` 规划器输出一行 JSON（`mode` + `queries`）；`split` 最多 3 条互不重复的子查询；解析失败或不足 2 条 → `direct`。  
+- 无 LLM / 调用失败：整句 `direct`（hybrid 已能覆盖多数单目标问题）。
 
 ### 6.2 Hybrid 召回 → Seeds
 
@@ -203,9 +204,9 @@ s =&\; 0.40\cdot\mathrm{cos}(c,\mathrm{pivot}) + 0.22\cdot\mathrm{cos}(c,\mathrm
    `相关 + 新信息覆盖 + 查询增益 + 时间桶多样性 − 与已选冗余`。  
    也可切 `EVIDENCE_SELECTION_MODE=topk` 做消融。
 
-### 6.5 Profile 检索
+### 6.5 Profile 注入
 
-字符重叠等方式取 ≤5 条 active `ProfileItem`，与 span 一并交给 formatter。
+active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for_inject` 全量注入（默认上限 30），与经历窗一并交给 formatter。
 
 ### 6.6 渲染与注入
 
@@ -223,7 +224,7 @@ s =&\; 0.40\cdot\mathrm{cos}(c,\mathrm{pivot}) + 0.22\cdot\mathrm{cos}(c,\mathrm
 |---|---|
 | 意图分类 | `session_context.messages_for_classifier`：短窗，不含 memory |
 | 咨询路由 | MacBERT 决定咨询/闲聊强度；记忆开关由用户 `memory_enabled` 与 `mem_cfg` 共同决定 |
-| 生成 | Dual-LoRA 引擎；记忆块已在 system；流式输出 |
+| 生成 | 单 chat LoRA（按咨询/闲聊调 scale）；记忆块已在 system；流式输出 |
 | post_turn | 落库消息 → ingest → 可能触发摘要 |
 
 关闭长期记忆时：仍有会话摘要 + 近期原文，行为退化为普通多轮助手。
@@ -246,8 +247,8 @@ s =&\; 0.40\cdot\mathrm{cos}(c,\mathrm{pivot}) + 0.22\cdot\mathrm{cos}(c,\mathrm
 | `MEMORY_CROSS_SESSION_LINKING` / `MEMORY_LINK_THRESHOLD` | 1 / 0.22 | 跨会话链 |
 | `MEMORY_CONTEXT_TOKEN_BUDGET` | 1600 | 注入预算 |
 | `MEMORY_SEMANTIC_TOP_K` / `MEMORY_LEXICAL_TOP_K` / `MEMORY_SEED_TOP_K` / `MEMORY_WINDOW_TOP_K` | 30 / 30 / 8 / 6 | 各阶段宽度 |
-| `MEMORY_WINDOW_MAX_MESSAGES` / `AER_NEIGHBOR_*` | 10 / 2 / 2 | 窗上限 / 固定邻域 |
-| `AER_CHUNK_*` / `MEMORY_ASSISTANT_WEIGHT` / `MEMORY_EMBED_RETRY_MAX` | 见源码 | 分块与嵌入 |
+| `MEMORY_WINDOW_MAX_MESSAGES` / `MEMORY_NEIGHBOR_*` | 10 / 2 / 2 | 窗上限 / 固定邻域 |
+| `MEMORY_CHUNK_*` / `MEMORY_ASSISTANT_WEIGHT` / `MEMORY_EMBED_RETRY_MAX` | 见源码 | 分块与嵌入 |
 | `MEMORY_OBSERVABILITY` | 1 | trace 日志 |
 
 `product_app/start.sh` 默认 `export MEMORY_BACKEND=aer`。

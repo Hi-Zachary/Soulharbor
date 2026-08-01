@@ -39,7 +39,7 @@ bash product_app/start.sh
 
 | 线 | 做什么 | 证据 |
 |---|---|---|
-| **对话微调** | Qwen3-14B QLoRA：PT→SFT→自我认知→DPO；MacBERT 分流；咨询/闲聊不同 adapter scale | `train/` · `evaluate/dialogue/runs/` |
+| **对话微调** | Qwen3-14B QLoRA：PT→SFT→自我认知→DPO；MacBERT 分流；咨询/闲聊/摘要不同 scale | `train/` · `evaluate/dialogue/runs/` |
 | **长期记忆 AER** | 原文入库 + 查询时扩窗重建；consent Profile；尽量整段注入 | `项目文档/05`·`06` · QA≈91% vs Mem0≈64% |
 
 ## 记忆系统

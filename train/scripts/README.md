@@ -10,14 +10,14 @@ scripts/
 │   ├── build/                # 构建 ShareGPT / PT JSONL
 │   └── self_cognition/       # 自我认知数据润色
 ├── alignment/                # DPO 偏好对构建（MiniMax 等）
-├── extraction/               # 记忆抽取数据 + extraction_sft 训练
 ├── classifiers/              # 意图分类器数据与训练
 ├── infer/                    # 训后命令行抽查
 ├── tools/                    # 环境、下载、语料过滤/质检
 └── legacy_risk/              # 已下线的 risk 分类数据管线（仅归档）
 ```
 
-超参见仓库 `train/configs/*.yaml`。数据在 `train/data/`。
+超参见仓库 `train/configs/*.yaml`。数据在 `train/data/`。  
+线上记忆为 AER，不依赖写时抽取训练。
 
 ---
 
@@ -86,24 +86,7 @@ llamafactory-cli train train/configs/dpo.yaml
 
 ---
 
-## 3. `extraction/` — 记忆抽取
-
-| 文件 | 用途 |
-|------|------|
-| `build_extraction_training_data.py` | 早期抽取数据构建 |
-| `assemble_extraction_data.py` | 多源合并/清洗为 extraction 训练格式 |
-| `rebuild_extraction_tool_data.py` | 按线上五工具 schema 重建 SFT 数据 |
-| `run_sft_extraction_adapter.sh` | 训练 **extraction_sft** LoRA |
-
-```bash
-bash train/scripts/extraction/run_sft_extraction_adapter.sh
-# 或
-llamafactory-cli train train/configs/extraction_sft.yaml
-```
-
----
-
-## 4. `classifiers/` — 意图分类
+## 3. `classifiers/` — 意图分类
 
 | 文件 | 用途 |
 |------|------|
@@ -118,7 +101,7 @@ llamafactory-cli train train/configs/extraction_sft.yaml
 
 ---
 
-## 5. `infer/` — 训后抽查
+## 4. `infer/` — 训后抽查
 
 | 文件 | 用途 |
 |------|------|
@@ -126,7 +109,7 @@ llamafactory-cli train train/configs/extraction_sft.yaml
 
 ---
 
-## 6. `tools/` — 环境与通用工具
+## 5. `tools/` — 环境与通用工具
 
 | 文件 | 用途 |
 |------|------|
@@ -137,7 +120,7 @@ llamafactory-cli train train/configs/extraction_sft.yaml
 
 ---
 
-## 7. `legacy_risk/` — 已下线
+## 6. `legacy_risk/` — 已下线
 
 产品已移除 risk/emotion 分类器；下列脚本仅复现旧数据管线时使用：
 
@@ -155,7 +138,6 @@ llamafactory-cli train train/configs/extraction_sft.yaml
 1. `llamafactory/build/` 准备数据 → `train/data/llm/`  
 2. `llamafactory/run/run_pt.sh` → `run_sft.sh` → `run_sft_self_cognition.sh`  
 3. `alignment/` 造 DPO → `llamafactory/run/run_dpo_synth_minimax.sh`  
-4. `extraction/` 造抽取数据 → `extraction/run_sft_extraction_adapter.sh`  
-5. `classifiers/train_classifiers_hf.py` 训意图  
+4. `classifiers/train_classifiers_hf.py` 训意图  
 
 对照：`train/README.md`、`train/configs/`、`项目文档/04_数据构建与样例.md`。
