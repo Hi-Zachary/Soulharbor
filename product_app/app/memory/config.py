@@ -15,6 +15,10 @@ class MemorySettings:
     backend: str = os.environ.get("MEMORY_BACKEND", "aer")
     store_enabled: bool = _b("MEMORY_STORE_ENABLED", "1")
     profile_enabled: bool = _b("MEMORY_PROFILE_ENABLED", "1")
+    # After assistant turns, Chinese LLM may propose pending prefs (consent still required).
+    profile_llm_propose: bool = _b("MEMORY_PROFILE_LLM_PROPOSE", "1")
+    profile_llm_propose_max: int = int(os.environ.get("MEMORY_PROFILE_LLM_PROPOSE_MAX", "1"))
+    profile_llm_skip_if_pending: bool = _b("MEMORY_PROFILE_LLM_SKIP_IF_PENDING", "1")
     split_query_enabled: bool = _b("MEMORY_SPLIT_QUERY_ENABLED", "1")
     rerank_enabled: bool = _b("MEMORY_BUNDLE_RERANK_ENABLED", "1")
     observability: bool = _b("MEMORY_OBSERVABILITY", "1")

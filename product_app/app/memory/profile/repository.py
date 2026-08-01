@@ -219,6 +219,27 @@ class ProfileStore:
                 created_at=int(row["created_at"]),
             )
 
+    def list_pending(self, user_id: int, limit: int = 16) -> List[PendingProfile]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM support_profile_pending WHERE user_id=? "
+                "ORDER BY created_at ASC LIMIT ?",
+                (int(user_id), int(limit)),
+            ).fetchall()
+            out: List[PendingProfile] = []
+            for row in rows:
+                sources = json.loads(str(row["source_json"]) or "[]")
+                out.append(
+                    PendingProfile(
+                        id=str(row["id"]),
+                        user_id=int(row["user_id"]),
+                        content=str(row["content"]),
+                        source_message_ids=[int(x) for x in sources],
+                        created_at=int(row["created_at"]),
+                    )
+                )
+            return out
+
     def count_pending(self, user_id: int) -> int:
         with self._conn() as conn:
             row = conn.execute(

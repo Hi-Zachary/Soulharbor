@@ -74,11 +74,24 @@ class MemoryEngine:
                     source_message_id=int(message_id),
                 )
             if mem_cfg.profile_enabled and role == "assistant":
+                # Weak regex offer (legacy).
                 self._profile.maybe_capture_assistant_proposal(
                     user_id=int(user_id),
                     assistant_text=content,
                     source_message_id=int(message_id),
                 )
+                # Primary: Chinese LLM propose → pending (consent still required).
+                if mem_cfg.profile_llm_propose and self._llm is not None:
+                    try:
+                        recent = self._store.list_recent_messages(int(user_id), limit=8)
+                        self._profile.maybe_llm_propose(
+                            user_id=int(user_id),
+                            llm=self._llm,
+                            recent_turns=recent,
+                            source_message_id=int(message_id),
+                        )
+                    except Exception:
+                        logger.warning("profile LLM propose failed", exc_info=True)
             try:
                 self._ingestor.process_embed_retries(limit=10)
             except Exception:

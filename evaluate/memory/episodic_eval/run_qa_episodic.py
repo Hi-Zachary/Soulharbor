@@ -129,7 +129,7 @@ class EpisodicMethod:
     def list_facts(self) -> List[str]:
         info = self._engine.inspect(self._user_id)
         prefs = [str(p.get("content") or "") for p in (info.get("support_preferences") or [])]
-        chunks = self._engine._repo.list_active_with_embeddings(self._user_id, limit=2000)
+        chunks = self._engine._store.list_active_with_embeddings(self._user_id, limit=2000)
         texts = [c.content.strip() for c in chunks if (c.content or "").strip() and c.role == "user"]
         # Prefer unique user lines; cap for judge prompt size
         seen = set()
@@ -145,7 +145,7 @@ class EpisodicMethod:
 
     def store_snapshot(self) -> Dict[str, Any]:
         info = self._engine.inspect(self._user_id)
-        stats = self._engine._repo.index_stats(self._user_id)
+        stats = self._engine._store.index_stats(self._user_id)
         return {
             "backend": "aer",
             "episode_chunks": info.get("episode_chunks"),

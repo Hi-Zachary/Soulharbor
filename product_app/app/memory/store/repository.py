@@ -289,6 +289,22 @@ class EpisodeStore:
             ).fetchall()
             return _unique_messages(rows)
 
+    def list_recent_messages(self, user_id: int, limit: int = 8) -> List[Dict[str, Any]]:
+        """Latest distinct messages for a user (any conversation), oldest→newest."""
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT message_id, role, position, content, created_at, chunk_index "
+                "FROM memory_episode_chunks "
+                "WHERE user_id=? AND is_deleted=0 "
+                "ORDER BY created_at DESC, message_id DESC, chunk_index ASC "
+                "LIMIT ?",
+                (int(user_id), max(1, int(limit)) * 4),
+            ).fetchall()
+            msgs = _unique_messages(rows)
+            msgs = msgs[: max(1, int(limit))]
+            msgs.reverse()
+            return msgs
+
     def neighbor_messages(
         self,
         *,

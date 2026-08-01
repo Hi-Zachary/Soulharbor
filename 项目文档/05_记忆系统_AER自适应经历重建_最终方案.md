@@ -144,12 +144,13 @@ SQLite（与主库同文件或同路径策略由引擎构造时传入），逻�
    - 否则按 `。！？；\n` 切开，再按 `TARGET_MIN/MAX`（150–350）合并。
 3. `upsert_chunks` → 对每块 `MemoryEmbedder.embed`；失败入 `memory_embed_retry`，后续 `process_embed_retries` 补跑。
 4. **Profile 旁路**（仅在开关打开时，`profile/service.py`）  
-   - 用户「记住/别忘了…」→ `create_explicit`；  
-   - 助理「要不要我记住…」→ `propose` 入 pending 队列（最多 8，不覆盖旧项；先过 `policy`）；  
+   - 用户「记住/别忘了…」→ 规则快路径 `create_explicit`；  
+   - **助理回合后**（`MEMORY_PROFILE_LLM_PROPOSE=1`，默认开）：中文 LLM（`profile/proposer.py`）从最近对话抽出支持偏好候选——**pending 为空**才抽、每次最多 `MEMORY_PROFILE_LLM_PROPOSE_MAX`（默认 **1**）条、须能对上用户原文证据 → `propose` 入 **pending**（**绝不直接写 active**）；再过 `policy`；闲聊由模型自行返回空列表，**不用关键词门控**；  
+   - 助理文本里「要不要我记住…」正则 offer 仍可作为弱补充；  
    - 用户整句「可以/对/好的…」→ `pop_all_pending`，**一次确认全部**为 `confirmed`；  
-   - 「A 改成 B」/「我现在不要 A」→ `correct`（软删匹配项，可选写入新内容）；  
-   - 「忘掉/删掉…」→ 软删画像与可匹配原文块；「查看记忆」→ 仅返回已确认偏好清单；  
-   - **政策拒绝**：诊断词、人格标签、瞬时情绪前缀、与来源无足够字符重叠等。
+   - 「A 改成 B」/「我现在不要 A」→ `correct`；「忘掉/删掉…」→ 软删；「查看记忆」→ 仅已确认偏好；  
+   - **政策拒绝**：诊断词、人格标签、瞬时情绪前缀等。  
+   - 与 MemMachine 差异：MemMachine 英文 LLM **攒批抽取后即写入画像**；SoulHarbor **单条候选 + 确认后才是记忆**。LongMemEval 评测已归档，不混入产品默认。
 5. **会话摘要**（`MemoryService`，非 AER 长期记忆）：未摘要 token 超阈值时用裸基座生成滚动摘要，写入 `conversations.summary`，属于短期工作记忆。
 
 写路径**不做**：fact 抽取、合并覆盖、时间衰减关闭、层级晋升。历史块默认长期可召回，由读路径预算与相关性决定是否进入上下文。
@@ -238,6 +239,9 @@ active 支持偏好数量小且粘性高——**不按查询过滤**，`list_for
 | `MEMORY_BACKEND` | `aer` | 后端标识（仅 `aer` 走本实现） |
 | `MEMORY_STORE_ENABLED` | 1 | Chronicle 读写 |
 | `MEMORY_PROFILE_ENABLED` | 1 | Profile |
+| `MEMORY_PROFILE_LLM_PROPOSE` | 1 | 助理回合后中文 LLM 提议 pending（仍需用户确认） |
+| `MEMORY_PROFILE_LLM_PROPOSE_MAX` | 1 | 每次最多提议条数 |
+| `MEMORY_PROFILE_LLM_SKIP_IF_PENDING` | 1 | 已有待确认时不再抽新候选 |
 | `MEMORY_SPLIT_QUERY_ENABLED` | 1 | 比较句拆分 |
 | `MEMORY_BUNDLE_RERANK_ENABLED` | 1 | 特征重排（无 LLM） |
 | `MEMORY_EXPAND_MODE` | `adaptive` | `adaptive` \| `fixed` |

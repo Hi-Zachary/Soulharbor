@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Any, List, Optional, Sequence
 
 from product_app.app.memory.models import ProfileItem
 from product_app.app.memory.profile.detector import ProfileDetector
@@ -34,10 +34,18 @@ class ProfileService:
         return self._create(user_id, content, "confirmed", source_message_ids)
 
     def propose(
-        self, *, user_id: int, content: str, source_message_ids: Sequence[int]
+        self,
+        *,
+        user_id: int,
+        content: str,
+        source_message_ids: Sequence[int],
+        source_messages: Sequence[str] | None = None,
     ) -> None:
+        # Pending uses the same safety checks as confirmed; overlap vs real user text
+        # when provided (LLM path). Regex offer still passes content-as-source.
+        sources = list(source_messages) if source_messages else [content]
         ok, _reason = self._policy.validate(
-            candidate=content, origin="confirmed", source_messages=[content]
+            candidate=content, origin="confirmed", source_messages=sources
         )
         if ok:
             self._db.add_pending(
@@ -135,6 +143,7 @@ class ProfileService:
     def maybe_capture_assistant_proposal(
         self, *, user_id: int, assistant_text: str, source_message_id: int
     ) -> Optional[str]:
+        """Legacy regex offer path (weak). Prefer maybe_llm_propose after assistant turns."""
         offered = self._detector.detect_propose_in_assistant(assistant_text)
         if not offered:
             return None
@@ -142,6 +151,57 @@ class ProfileService:
             user_id=user_id, content=offered, source_message_ids=[source_message_id]
         )
         return f"profile_proposed:{offered[:40]}"
+
+    def maybe_llm_propose(
+        self,
+        *,
+        user_id: int,
+        llm: Any,
+        recent_turns: Sequence[dict],
+        source_message_id: int,
+    ) -> Optional[str]:
+        """LLM extracts support-preference candidates → pending only (never active)."""
+        from product_app.app.memory.config import mem_cfg
+        from product_app.app.memory.profile.proposer import (
+            evidence_supported,
+            propose_from_recent,
+            roughly_same,
+            user_texts,
+        )
+
+        if mem_cfg.profile_llm_skip_if_pending and self._db.count_pending(user_id) > 0:
+            return None
+
+        existing = [p.content for p in self.list_active(user_id)]
+        existing += [p.content for p in self._db.list_pending(user_id)]
+        max_items = max(1, int(mem_cfg.profile_llm_propose_max))
+        proposals = propose_from_recent(
+            llm,
+            recent_turns=recent_turns,
+            existing=existing,
+            max_items=max_items,
+        )
+        if not proposals:
+            return None
+        u_msgs = user_texts(recent_turns)
+        added = 0
+        for prop in proposals[:max_items]:
+            content = prop["content"]
+            if any(roughly_same(content, e) for e in existing):
+                continue
+            if not evidence_supported(prop, u_msgs):
+                continue
+            before = self._db.count_pending(user_id)
+            self.propose(
+                user_id=user_id,
+                content=content,
+                source_message_ids=[source_message_id],
+                source_messages=u_msgs or [content],
+            )
+            if self._db.count_pending(user_id) > before:
+                added += 1
+                existing.append(content)
+        return f"profile_llm_proposed:{added}" if added else None
 
     def _create(
         self,
