@@ -1,8 +1,8 @@
-"""Heuristic detectors for remember / forget / confirm / inspect phrases."""
+"""Heuristic detectors for remember / forget / confirm / inspect / correct phrases."""
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Optional, Tuple
 
 _REMEMBER = re.compile(r"(记住|以后请|下次可以|长期记得|别忘了|请记得|可以长期记着)")
 _FORGET = re.compile(r"(忘掉|不要记|删掉|别再提|忘记|不要再记住)")
@@ -42,11 +42,41 @@ class ProfileDetector:
     def detect_inspect(self, user_text: str) -> bool:
         return bool(_LOOK_UP.search(user_text or ""))
 
-    def detect_correct(self, user_text: str) -> Optional[str]:
+    def detect_correct(self, user_text: str) -> Optional[Tuple[str, str]]:
+        """
+        Parse a correction utterance into (old_keyword, new_content).
+        new_content may be "" when the user only retracts an old preference.
+        """
         text = (user_text or "").strip()
         if not text or not _FIX.search(text):
             return None
-        return text
+
+        # 「旧说法改成新说法」
+        match = re.search(
+            r"(.+?)(?:改成|更正(?:一下)?(?:为|成)?)[，,:：]?\s*(.+)$",
+            text,
+        )
+        if match:
+            old = match.group(1).strip().strip("，,。 ")
+            old = re.sub(
+                r"^(?:我现在不|以后不要|不要再记)[要再]*",
+                "",
+                old,
+            ).strip()
+            new = match.group(2).strip().strip("。.!！")
+            if old and new:
+                return old, new
+
+        # 「我现在不 / 以后不要 X」（只删旧的）
+        match = re.search(
+            r"(?:我现在不|以后不要|不要再记)[要再]*[，,:：]?\s*(.+)$",
+            text,
+        )
+        if match:
+            old = match.group(1).strip().strip("。.!！")
+            if old:
+                return old, ""
+        return None
 
     def detect_propose_in_assistant(self, assistant_text: str) -> Optional[str]:
         text = (assistant_text or "").strip()

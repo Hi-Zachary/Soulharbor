@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Sequence
 
 from product_app.app.memory.models import ProfileItem
 from product_app.app.memory.profile.service import ProfileService
@@ -12,15 +12,12 @@ def handle_correct(
     user_id: int,
     old_keyword: str,
     new_content: str | None,
-    source_message_ids: list[int],
+    source_message_ids: Sequence[int],
 ) -> Optional[ProfileItem]:
-    """Drop preferences matching old_keyword; optionally write a replacement."""
-    profile.forget_matching(user_id, old_keyword)
-    replacement = (new_content or "").strip()
-    if not replacement:
-        return None
-    return profile.create_explicit(
+    """Thin wrapper kept for command exports; logic lives on ProfileService."""
+    return profile.correct(
         user_id=user_id,
-        content=replacement,
-        source_message_ids=source_message_ids,
+        old_keyword=old_keyword,
+        new_content=new_content,
+        source_message_ids=list(source_message_ids),
     )

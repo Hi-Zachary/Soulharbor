@@ -127,7 +127,9 @@ class RetrievalPipeline:
 
             profiles: List[ProfileItem] = []
             if mem_cfg.profile_enabled:
-                profiles = self._profile.search(user_id, query, limit=5)
+                # Preferences are few and sticky — inject all active ones,
+                # not a query-filtered subset (avoids missing standing prefs).
+                profiles = self._profile.list_for_inject(user_id)
             trace.profile_hits = len(profiles)
             return windows, profiles, trace
 

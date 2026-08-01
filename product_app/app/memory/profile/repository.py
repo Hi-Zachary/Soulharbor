@@ -11,6 +11,9 @@ from typing import Iterator, List, Optional, Sequence
 
 from product_app.app.memory.models import PendingProfile, ProfileItem
 
+# How many unanswered assistant proposals to keep per user.
+_MAX_PENDING = 8
+
 
 class ProfileStore:
     def __init__(self, db_path: str | Path) -> None:
@@ -89,16 +92,26 @@ class ProfileStore:
             return items
 
     def search(self, user_id: int, query: str, limit: int = 5) -> List[ProfileItem]:
+        """Rank by CJK unigram/bigram overlap (same idea as lexical BM25)."""
+        from product_app.app.memory.store.lexical_search import _tokenize
+
         items = self.list_active(user_id)
         q = (query or "").strip()
         if not q:
             return items[:limit]
-        ranked = sorted(
-            ((sum(1 for ch in q if ch in item.content), item) for item in items),
-            key=lambda pair: pair[0],
-            reverse=True,
-        )
-        matched = [item for score, item in ranked if score > 0]
+        q_terms = set(_tokenize(q))
+        if not q_terms:
+            return items[:limit]
+
+        def score(item: ProfileItem) -> float:
+            body = item.content or ""
+            # Prefer whole-query substring, then n-gram overlap.
+            hit = 1.0 if q in body else 0.0
+            overlap = len(q_terms & set(_tokenize(body))) / float(len(q_terms))
+            return hit * 2.0 + overlap
+
+        ranked = sorted(((score(item), item) for item in items), key=lambda p: p[0], reverse=True)
+        matched = [item for sc, item in ranked if sc > 0]
         return (matched or items)[:limit]
 
     def soft_delete(self, user_id: int, profile_id: str) -> bool:
@@ -145,19 +158,28 @@ class ProfileStore:
     def add_pending(
         self, *, user_id: int, content: str, source_message_ids: Sequence[int]
     ) -> PendingProfile:
+        """Enqueue a proposal. Keeps a per-user queue (does not wipe older pendings)."""
         pending_id = uuid.uuid4().hex
         now = int(time.time())
         cleaned = content.strip()
         sources = [int(x) for x in source_message_ids]
         with self._conn() as conn:
             conn.execute(
-                "DELETE FROM support_profile_pending WHERE user_id=?", (int(user_id),)
-            )
-            conn.execute(
                 "INSERT INTO support_profile_pending"
                 "(id, user_id, content, source_json, created_at) VALUES(?,?,?,?,?)",
                 (pending_id, int(user_id), cleaned, json.dumps(sources), now),
             )
+            # Cap queue length: drop oldest beyond max.
+            rows = conn.execute(
+                "SELECT id FROM support_profile_pending WHERE user_id=? "
+                "ORDER BY created_at DESC",
+                (int(user_id),),
+            ).fetchall()
+            for stale in rows[_MAX_PENDING:]:
+                conn.execute(
+                    "DELETE FROM support_profile_pending WHERE id=?",
+                    (str(stale["id"]),),
+                )
         return PendingProfile(
             id=pending_id,
             user_id=int(user_id),
@@ -167,25 +189,40 @@ class ProfileStore:
         )
 
     def pop_pending(self, user_id: int) -> Optional[PendingProfile]:
+        """Pop the newest pending item only."""
+        items = self.pop_all_pending(user_id, limit=1)
+        return items[0] if items else None
+
+    def pop_all_pending(
+        self, user_id: int, limit: int | None = None
+    ) -> List[PendingProfile]:
+        """Pop pending proposals oldest-first (stable confirm order). limit=None → all."""
         with self._conn() as conn:
-            row = conn.execute(
+            sql = (
                 "SELECT * FROM support_profile_pending WHERE user_id=? "
-                "ORDER BY created_at DESC LIMIT 1",
-                (int(user_id),),
-            ).fetchone()
-            if not row:
-                return None
-            conn.execute(
-                "DELETE FROM support_profile_pending WHERE id=?", (str(row["id"]),)
+                "ORDER BY created_at ASC"
             )
-            sources = json.loads(str(row["source_json"]) or "[]")
-            return PendingProfile(
-                id=str(row["id"]),
-                user_id=int(row["user_id"]),
-                content=str(row["content"]),
-                source_message_ids=[int(x) for x in sources],
-                created_at=int(row["created_at"]),
-            )
+            params: list = [int(user_id)]
+            if limit is not None:
+                sql += " LIMIT ?"
+                params.append(int(limit))
+            rows = conn.execute(sql, params).fetchall()
+            out: List[PendingProfile] = []
+            for row in rows:
+                conn.execute(
+                    "DELETE FROM support_profile_pending WHERE id=?", (str(row["id"]),)
+                )
+                sources = json.loads(str(row["source_json"]) or "[]")
+                out.append(
+                    PendingProfile(
+                        id=str(row["id"]),
+                        user_id=int(row["user_id"]),
+                        content=str(row["content"]),
+                        source_message_ids=[int(x) for x in sources],
+                        created_at=int(row["created_at"]),
+                    )
+                )
+            return out
 
     def peek_pending(self, user_id: int) -> Optional[PendingProfile]:
         with self._conn() as conn:
@@ -204,3 +241,11 @@ class ProfileStore:
                 source_message_ids=[int(x) for x in sources],
                 created_at=int(row["created_at"]),
             )
+
+    def count_pending(self, user_id: int) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS c FROM support_profile_pending WHERE user_id=?",
+                (int(user_id),),
+            ).fetchone()
+            return int(row["c"] if row else 0)
