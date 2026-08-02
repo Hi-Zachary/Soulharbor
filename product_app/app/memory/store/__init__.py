@@ -1,1 +1,1 @@
-"""Trace archive: ingest, search, stitch, link, select, dedup, rerank."""
+"""Trace archive: ingest, search, stitch, merge, select, reinforce."""

@@ -1,4 +1,4 @@
-"""Admin memory_count uses AER trace chunks + active profiles."""
+"""Admin memory_count uses ER trace chunks + active profiles."""
 from __future__ import annotations
 
 import tempfile

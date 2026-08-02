@@ -96,7 +96,7 @@ CREATE INDEX IF NOT EXISTS idx_triage_records_status_updated ON triage_records(s
 """
 
 
-# Pre-AER / intermediate long-term memory schemas. Trace + Profile live in the
+# Pre-ER / intermediate long-term memory schemas. Trace + Profile live in the
 # same sqlite file but are created by TraceStore.init().
 _LEGACY_DROP_TABLES = (
     "user_memory_digests",
@@ -824,7 +824,7 @@ class SQLiteStore:
 
     # ---- admin: user management ----
     def list_users_with_stats(self, *, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
-        """Admin user list. memory_count = AER trace chunks + active profile prefs."""
+        """Admin user list. memory_count = ER trace chunks + active profile prefs."""
         has_chunks = self._table_exists("memory_blocks")
         has_profile = self._table_exists("support_profile_items")
         chunk_cnt = (

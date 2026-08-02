@@ -41,33 +41,33 @@ def merge_windows(windows: List[Span]) -> List[Span]:
                 existing = turns.get(turn.message_id)
                 if existing is None:
                     turns[turn.message_id] = turn
-                elif turn.is_focus:
-                    existing.is_focus = True
+                elif turn.is_anchor:
+                    existing.is_anchor = True
 
             messages = sorted(turns.values(), key=lambda t: t.position)
             if len(messages) > max_msgs:
-                focus_pos = {t.position for t in messages if t.is_focus}
+                anchor_pos = {t.position for t in messages if t.is_anchor}
                 center = (
-                    sum(focus_pos) / len(focus_pos)
-                    if focus_pos
+                    sum(anchor_pos) / len(anchor_pos)
+                    if anchor_pos
                     else messages[len(messages) // 2].position
                 )
                 messages = sorted(
                     messages,
-                    key=lambda t: (0 if t.is_focus else 1, abs(t.position - center)),
+                    key=lambda t: (0 if t.is_anchor else 1, abs(t.position - center)),
                 )[:max_msgs]
                 messages = sorted(messages, key=lambda t: t.position)
 
-            focus_ids = sorted(
-                {t.message_id for t in messages if t.is_focus} or prev.focus_ids
+            anchor_ids = sorted(
+                {t.message_id for t in messages if t.is_anchor} or prev.anchor_ids
             )
             queries = list(
                 dict.fromkeys((prev.retrieval_queries or []) + (window.retrieval_queries or []))
             )
             merged[-1] = Span(
-                bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in focus_ids[:4]),
+                bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in anchor_ids[:4]),
                 conversation_id=conv_id,
-                focus_ids=focus_ids,
+                anchor_ids=anchor_ids,
                 messages=messages,
                 fused_score=max(prev.fused_score, window.fused_score),
                 retrieval_queries=queries,

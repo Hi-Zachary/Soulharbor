@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Long-horizon QA eval for official Mem0 on the same protocol as aer_eval.
+"""Long-horizon QA eval for official Mem0 on the same protocol as er_eval.
 
-Uses the same reader / judge / content_f1 scoring as run_qa_aer.py so
+Uses the same reader / judge / content_f1 scoring as run_qa_er.py so
 results are comparable on evaluate/memory/data (the final eval set).
 
   python run_qa_mem0.py --selftest
@@ -28,7 +28,7 @@ sys.path.insert(0, str(PROJECT))
 
 from api_llm import APILLM  # noqa: E402
 from mem0_adapter import Mem0Adapter, _ensure_shared_sentence_transformer  # noqa: E402
-from run_qa_aer import (  # noqa: E402
+from run_qa_er import (  # noqa: E402
     _load_cases,
     content_f1,
     load_config,
@@ -283,7 +283,8 @@ def main() -> None:
     epi_ref = None
     runs_root = PROJECT / "evaluate/memory/runs"
     epi_runs = sorted(
-        list(runs_root.glob("qa_aer_*/summary.json"))
+        list(runs_root.glob("qa_er_*/summary.json"))
+        + list(runs_root.glob("qa_aer_*/summary.json"))
         + list(runs_root.glob("qa_episodic_*/summary.json")),
         reverse=True,
     )

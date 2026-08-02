@@ -1,6 +1,6 @@
 # Trace memory long-horizon QA（API）
 
-评测 **SoulHarbor 自适应经历重建（AER）长期记忆**，并可同协议对照官方 Mem0。
+评测 **SoulHarbor 经历重建（ER）长期记忆**，并可同协议对照官方 Mem0。
 
 主数据：`../data/all_30.jsonl`（细节/上下文/偏好/现状/跨会话/时序）。
 
@@ -16,11 +16,11 @@ Embedding 默认本地 `models/encoders/bge-m3`；对话/答题/Judge 走 MiniMa
 ## Run
 
 ```bash
-cd /root/autodl-tmp/SoulHarbor/evaluate/memory/aer_eval
+cd /root/autodl-tmp/SoulHarbor/evaluate/memory/er_eval
 
-# AER
-/root/autodl-tmp/CondaEnv/soulhar/bin/python run_qa_aer.py --selftest
-/root/autodl-tmp/CondaEnv/soulhar/bin/python run_qa_aer.py \
+# ER
+/root/autodl-tmp/CondaEnv/soulhar/bin/python run_qa_er.py --selftest
+/root/autodl-tmp/CondaEnv/soulhar/bin/python run_qa_er.py \
   --data ../data/all_30.jsonl --workers 4 --qa-workers 3
 
 # Mem0（同协议对照）
@@ -28,7 +28,7 @@ cd /root/autodl-tmp/SoulHarbor/evaluate/memory/aer_eval
   --data ../data/all_30.jsonl --workers 4 --qa-workers 3
 ```
 
-结果写入 `../runs/qa_aer_*/`、`../runs/qa_mem0_*/`（`summary.json` + `results.jsonl`）。历史目录名 `qa_episodic_*` 仍可对照。
+结果写入 `../runs/qa_er_*/`、`../runs/qa_mem0_*/`（`summary.json` + `results.jsonl`）。历史目录名 `qa_er_*` / `qa_aer_*` 仍可对照。
 
 ## Metrics
 

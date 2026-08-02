@@ -17,7 +17,7 @@ scripts/
 ```
 
 超参见仓库 `train/configs/*.yaml`。数据在 `train/data/`。  
-线上记忆为 AER，不依赖写时抽取训练。
+线上记忆为 ER，不依赖写时抽取训练。
 
 ---
 

@@ -1,81 +1,165 @@
-"""Pick a small set of windows that cover the query without too much overlap."""
+"""Decay-aware MMR selection over experience windows (with recency)."""
 from __future__ import annotations
 
-from typing import List, Set
+import math
+import time
+from typing import List, Optional, Set
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.models import Span
-from product_app.app.memory.store.text_sim import entities, jaccard, tokens
+from product_app.app.memory.store.repository import TraceStore
+from product_app.app.memory.store.text_sim import char_bigrams, jaccard, tokens
+from product_app.app.memory.store.window_key import earliest_ts, window_key
 
 
-def _relevance(query: str, window: Span) -> float:
+def _content_bigrams(window: Span) -> Set[str]:
+    text = "\n".join(t.content for t in window.messages)
+    return char_bigrams(text)
+
+
+def latest_ts(window: Span) -> int:
+    if not window.messages:
+        return 0
+    return max(int(t.created_at) for t in window.messages)
+
+
+def week_bucket(window: Span, *, seconds: int = 7 * 86400) -> int:
+    """Bucket by the newest turn in the window (state-oriented)."""
+    return int(latest_ts(window)) // int(seconds)
+
+
+def content_relevance(query: str, window: Span) -> float:
+    """R_content: retrieval fused score + query token overlap."""
     q = tokens(query)
     text = "\n".join(t.content for t in window.messages)
     overlap = jaccard(q, tokens(text))
     fused = float(window.fused_score or 0.0)
-    rerank = float(window.rerank_score if window.rerank_score is not None else 0.0)
-    return fused * 2.0 + rerank * 0.5 + overlap * 1.5
+    return fused * 2.0 + overlap * 1.5
 
 
-def _week_bucket(window: Span, *, seconds: int = 7 * 86400) -> int:
-    if not window.messages:
-        return 0
-    earliest = min(t.created_at for t in window.messages)
-    return int(earliest) // int(seconds)
+def decay_strength(
+    strength: float,
+    reinforced_at: int,
+    *,
+    now: int | None = None,
+    w_min: float | None = None,
+    tau_d: float | None = None,
+) -> float:
+    """D_W(t) = w_min + (w - w_min) * exp(-(t - t_W) / tau_d)."""
+    w_min = float(mem_cfg.decay_w_min if w_min is None else w_min)
+    tau_d = float(mem_cfg.decay_tau_sec if tau_d is None else tau_d)
+    w = max(float(strength), w_min)
+    if tau_d <= 0:
+        return w
+    now_i = int(time.time() if now is None else now)
+    dt = max(0, now_i - int(reinforced_at))
+    return w_min + (w - w_min) * math.exp(-dt / tau_d)
 
 
-def _content_tokens(window: Span) -> Set[str]:
-    text = "\n".join(t.content for t in window.messages)
-    return tokens(text) | entities(text)
+def decayed_relevance(
+    query: str,
+    window: Span,
+    *,
+    strength: float,
+    reinforced_at: int,
+    now: int | None = None,
+) -> float:
+    """R_decay(W) = R_content(W) * [alpha + (1-alpha) * D_W(t)]."""
+    if not mem_cfg.decay_enabled:
+        return content_relevance(query, window)
+    d = decay_strength(strength, reinforced_at, now=now)
+    alpha = float(mem_cfg.decay_alpha)
+    return content_relevance(query, window) * (alpha + (1.0 - alpha) * d)
+
+
+def recency_score(window: Span, *, t_ref: int, tau_sec: float | None = None) -> float:
+    """
+    Relative recency inside the candidate pool:
+    exp(-(t_ref - latest_ts(W)) / tau). Newer windows ≈ 1.
+    """
+    tau = float(mem_cfg.mmr_recency_tau_sec if tau_sec is None else tau_sec)
+    if tau <= 0:
+        return 1.0
+    dt = max(0, int(t_ref) - latest_ts(window))
+    return math.exp(-dt / tau)
+
+
+def _window_sim(left: Span, right: Span) -> float:
+    return jaccard(_content_bigrams(left), _content_bigrams(right))
+
+
+def sort_by_time(bundles: List[Span]) -> List[Span]:
+    return sorted(bundles, key=lambda w: (earliest_ts(w), w.conversation_id, w.bundle_id))
 
 
 def select_windows(
     *,
     query: str,
     bundles: List[Span],
+    store: Optional[TraceStore] = None,
+    user_id: int = 0,
     limit: int | None = None,
+    now: int | None = None,
 ) -> List[Span]:
     """
-    Default mode (`coverage`): greedy pick for relevance + new info − redundancy.
-    `topk` mode: just take the first N windows (already ranked upstream).
+    Default `mmr`: decay-aware MMR + relative recency / new-week bonus.
+    `topk`: keep upstream order, take first N.
+    Legacy alias: `coverage` → `mmr`.
     """
-    mode = (mem_cfg.evidence_selection_mode or "coverage").lower()
+    mode = (mem_cfg.evidence_selection_mode or "mmr").lower()
+    if mode == "coverage":
+        mode = "mmr"
     limit = int(limit or mem_cfg.bundle_top_k)
     if not bundles:
         return []
-    if mode != "coverage":
+    if mode != "mmr":
         return bundles[:limit]
+
+    now_i = int(time.time() if now is None else now)
+    strengths: dict[str, tuple[float, int]] = {}
+    if store is not None and user_id > 0:
+        keys = [window_key(w) for w in bundles]
+        strengths = store.get_window_strengths(user_id=user_id, window_keys=keys)
+
+    # Anchor recency to the newest evidence in this candidate pool (not wall-clock),
+    # so historical eval dialogues still get a meaningful "current state" bias.
+    t_ref = max((latest_ts(w) for w in bundles), default=now_i)
+    beta = float(mem_cfg.mmr_recency_beta)
+    week_bonus = float(mem_cfg.mmr_week_bonus)
 
     remaining = list(bundles)
     chosen: List[Span] = []
-    covered: Set[str] = set()
     seen_weeks: Set[int] = set()
-    query_tokens = tokens(query)
+    lam = float(mem_cfg.mmr_lambda)
 
     while remaining and len(chosen) < limit:
         best_idx = -1
         best_score = -1e9
         for idx, window in enumerate(remaining):
-            rel = min(_relevance(query, window), 2.2)
-            cov = _content_tokens(window)
-            novelty = 1.0 if not covered else len(cov - covered) / max(1, len(cov))
-            query_gain = len((cov - covered) & query_tokens) / max(1, len(query_tokens))
-            week = _week_bucket(window)
-            time_bonus = 0.9 if week not in seen_weeks else -0.15
-            redundancy = jaccard(cov, covered) if covered else 0.0
-            score = rel + 1.6 * novelty + 1.0 * query_gain + time_bonus - 1.8 * redundancy
+            key = window_key(window)
+            w0, t0 = strengths.get(key, (1.0, earliest_ts(window) or now_i))
+            rel = decayed_relevance(
+                query, window, strength=w0, reinforced_at=t0, now=now_i
+            )
+            recent = recency_score(window, t_ref=t_ref)
+            week = week_bucket(window)
+            bucket = week_bonus if week not in seen_weeks else 0.0
+            r_eff = rel + beta * recent + bucket
+            redundancy = 0.0
+            if chosen:
+                redundancy = max(_window_sim(window, s) for s in chosen)
+            score = lam * r_eff - (1.0 - lam) * redundancy
             if score > best_score:
                 best_score = score
                 best_idx = idx
 
         if best_idx < 0:
             break
-        if chosen and best_score < 0.05:
+        if chosen and best_score < 0.0:
             break
 
         pick = remaining.pop(best_idx)
         chosen.append(pick)
-        covered |= _content_tokens(pick)
-        seen_weeks.add(_week_bucket(pick))
+        seen_weeks.add(week_bucket(pick))
 
     return chosen

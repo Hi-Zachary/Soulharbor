@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Long-horizon QA eval for SoulHarbor trace memory (API LLM).
 
-Only evaluates the AER trace backend (Mem0 baseline is a separate harness).
+Only evaluates the ER trace backend (Mem0 baseline is a separate harness).
 Mem0 baseline from 2026-07-30 remains the frozen reference.
 
-  python run_qa_aer.py --selftest
-  python run_qa_aer.py --limit 1 --workers 1
-  python run_qa_aer.py --workers 4 --qa-workers 3
+  python run_qa_er.py --selftest
+  python run_qa_er.py --limit 1 --workers 1
+  python run_qa_er.py --workers 4 --qa-workers 3
 """
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ class EpisodicMethod:
         info = self._engine.inspect(self._user_id)
         stats = self._engine._store.index_stats(self._user_id)
         return {
-            "backend": "aer",
+            "backend": "er",
             "trace_blocks": info.get("trace_blocks"),
             "support_preferences": info.get("support_preferences"),
             "index": stats,
@@ -471,7 +471,7 @@ def main() -> None:
         sys.exit("no cases loaded")
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    run_dir = Path(args.out) / f"qa_aer_{stamp}"
+    run_dir = Path(args.out) / f"qa_er_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     work_dir = run_dir / "work"
     work_dir.mkdir(parents=True, exist_ok=True)

@@ -33,7 +33,7 @@ def _date_label(ts: int) -> str:
 def _relevance(turn: SpanTurn, query: str) -> float:
     q_tokens = tokens(query)
     overlap = jaccard(tokens(turn.content), q_tokens) if q_tokens else 0.0
-    bonus = 0.25 if turn.is_focus else 0.0
+    bonus = 0.25 if turn.is_anchor else 0.0
     return overlap * 2.0 + bonus
 
 
@@ -195,14 +195,14 @@ def _pick_user_turns(
 
     ranked = sorted(
         users,
-        key=lambda t: (-_relevance(t, query), 0 if t.is_focus else 1, t.position),
+        key=lambda t: (-_relevance(t, query), 0 if t.is_anchor else 1, t.position),
     )
     chosen = ranked[:limit]
     return sorted(chosen, key=lambda t: t.position)
 
 
 def _budget_for(turn: SpanTurn) -> int:
-    return _SNIP_SEED if turn.is_focus else _SNIP_DEFAULT
+    return _SNIP_SEED if turn.is_anchor else _SNIP_DEFAULT
 
 
 def _lines_for_window(
@@ -236,7 +236,7 @@ def _lines_for_window(
                 query_vec=query_vec,
             )
         day = _date_label(turn.created_at)
-        star = "★ " if turn.is_focus else ""
+        star = "★ " if turn.is_anchor else ""
         when = f"{day}：" if day else ""
         lines.append(f"- {star}{when}用户曾说：{text}")
         lines.append(
@@ -305,10 +305,8 @@ def format_sections(
     snip_plan: Dict[int, Tuple[List[str], List[float]]] = {}
 
     if bundles:
-        ordered = sorted(
-            bundles,
-            key=lambda w: (w.chain_id or "~", int(w.chain_index or 0), _earliest_ts(w)),
-        )
+        # Chronological injection: no explicit cross-session chain_id.
+        ordered = sorted(bundles, key=lambda w: (_earliest_ts(w), w.conversation_id))
         # Batch semantic snips only when at least one message exceeds the soft cap.
         needs_snip = any(
             len((t.content or "").strip()) > _budget_for(t)
@@ -319,18 +317,8 @@ def format_sections(
             model = model or MemoryEmbedder.shared()
             query_vec, snip_plan = _prepare_snip_batch(ordered, query=query, embedder=model)
 
-        last_chain = None
-        wrote_loose_header = False
+        parts.append("[相关经历证据]")
         for window in ordered:
-            chain = window.chain_id
-            if chain:
-                if chain != last_chain:
-                    parts.append(f"[经历链 {chain}]")
-                    last_chain = chain
-            elif not wrote_loose_header:
-                parts.append("[相关经历证据]")
-                wrote_loose_header = True
-                last_chain = None
             parts.extend(
                 _lines_for_window(
                     window,

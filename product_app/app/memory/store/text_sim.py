@@ -15,6 +15,14 @@ def tokens(text: str) -> set[str]:
     return set(_WORD.findall(text or ""))
 
 
+def char_bigrams(text: str) -> set[str]:
+    """Overlapping 2-grams — better redundancy signal for unspaced Chinese."""
+    s = re.sub(r"\s+", "", text or "")
+    if len(s) < 2:
+        return {s} if s else set()
+    return {s[i : i + 2] for i in range(len(s) - 1)}
+
+
 def entities(text: str) -> set[str]:
     return set(_ENTITY.findall(text or ""))
 

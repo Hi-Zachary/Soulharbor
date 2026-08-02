@@ -1,6 +1,6 @@
 # SoulHarbor Product App（FastAPI + Vue）
 
-生产 Web 应用：用户对话 + 管理端 + 意图分流 + chat LoRA 生成 + AER 长期记忆。
+生产 Web 应用：用户对话 + 管理端 + 意图分流 + chat LoRA 生成 + ER 长期记忆。
 
 ## 启动
 
@@ -10,7 +10,7 @@ conda activate /root/autodl-tmp/CondaEnv/soulhar
 bash product_app/start.sh
 ```
 
-`start.sh` 会自动选择最新的 `dpo_synth_*` 与 `bge-m3`，并默认 `MEMORY_BACKEND=aer`。
+`start.sh` 会自动选择最新的 `dpo_synth_*` 与 `bge-m3`，并默认 `MEMORY_BACKEND=er`。
 
 - 用户端：`http://<host>:8000/app`
 - 管理端：`http://<host>:8000/admin/login`（默认 `soulharbor_admin`）
@@ -21,7 +21,7 @@ bash product_app/start.sh
 
 ```
 product_app/
-├── app/           # FastAPI 与记忆子系统（memory/ = AER）
+├── app/           # FastAPI 与记忆子系统（memory/ = ER）
 ├── frontend/      # Vue 3 SPA 源码
 ├── static/spa/    # 构建产物
 ├── templates/     # 管理端页面

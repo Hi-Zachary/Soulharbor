@@ -122,7 +122,8 @@ class MemoryEngine:
             return ""
 
         # reserved for callers / future session-scoped filters
-        del conversation_id, recent_messages, conversation_summary
+        del recent_messages, conversation_summary
+        conv_id = int(conversation_id)
 
         try:
             query = (current_user_message or "").strip()
@@ -153,6 +154,21 @@ class MemoryEngine:
                 trace.memory_tokens = int(counter(block))
             else:
                 trace.memory_tokens = max(1, int(len(block) / 1.5)) if block else 0
+
+            if block and windows:
+                try:
+                    from product_app.app.memory.store.reinforce import reinforce_windows
+
+                    reinforce_windows(
+                        self._store,
+                        user_id=user_id,
+                        conversation_id=conv_id,
+                        windows=windows,
+                    )
+                except Exception:
+                    logger.warning(
+                        "memory reinforce failed user=%s", user_id, exc_info=True
+                    )
 
             self._last_trace = trace
             if mem_cfg.observability:
@@ -211,7 +227,7 @@ class MemoryEngine:
 
     def inspect(self, user_id: int) -> Dict[str, object]:
         info = handle_inspect(repo=self._store, profile=self._profile, user_id=user_id)
-        info["backend"] = "aer"
+        info["backend"] = "er"
         return info
 
     def process_retries(self) -> int:

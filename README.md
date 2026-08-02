@@ -10,7 +10,7 @@
 ```
 SoulHarbor/
 ├── product_app/          # FastAPI Web 应用（唯一运行入口）
-│   └── app/memory/       # 长期记忆：AER（原文库 + 查询时重建，backend=aer）
+│   └── app/memory/       # 长期记忆：ER（原文库 + 查询时重建，backend=er）
 ├── prompts/              # 主对话 system：system_soulharbor_zh.txt
 ├── scripts/memory/       # 记忆运维：backfill / verify_index / migrate_profiles / smoke_recall
 ├── models/               # Qwen3-14B + chinese-macbert-base + bge-m3（本地，不入库）
@@ -19,7 +19,7 @@ SoulHarbor/
 ├── train/                # 微调脚本 + configs/*.yaml
 ├── evaluate/
 │   ├── dialogue/         # 主对话评测（data / runs / sampling / runners）
-│   └── memory/           # 长期记忆 QA（data/all_30.jsonl · runs · aer_eval）
+│   └── memory/           # 长期记忆 QA（data/all_30.jsonl · runs · er_eval）
 ├── 项目文档/             # 00 故事 → 01–06 技术与评测
 └── archive/              # 非运行时历史（本地，不入库）
 ```
@@ -40,11 +40,11 @@ bash product_app/start.sh
 | 线 | 做什么 | 证据 |
 |---|---|---|
 | **对话微调** | Qwen3-14B QLoRA：PT→SFT→DPO；MacBERT 分流；咨询/闲聊不同 LoRA scale，摘要走裸基座 | `train/` · `evaluate/dialogue/runs/` |
-| **长期记忆 AER** | 原文入库 + 查询时扩窗重建；确认制 Profile；尽量整段注入用户原文 | `项目文档/05`·`06` · QA≈91% vs Mem0≈64% |
+| **长期记忆 ER** | 原文入库 + 查询时扩窗重建；确认制 Profile；Decay-aware MMR（含新近性） | `项目文档/05`·`06` · QA≈92% vs Mem0≈64% |
 
 ## 记忆系统
 
-- 方案：`项目文档/05_记忆系统_AER自适应经历重建_最终方案.md`
+- 方案：`项目文档/05_记忆系统_ER经历重建_最终方案.md`
 - 评测：`项目文档/06_记忆系统_对比实验设计.md`
 - 数据：`evaluate/memory/data/all_30.jsonl`（构建见 `05` §9）
 - 结果：`evaluate/memory/runs/`（固定 MiniMax-M3 reader）

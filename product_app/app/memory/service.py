@@ -47,7 +47,7 @@ class MemoryService:
     def is_long_term_active(self, user_id: int) -> bool:
         if not settings.memory_enabled or user_id <= 0:
             return False
-        if mem_cfg.backend != "aer":
+        if mem_cfg.backend != "er":
             return False
         return self._db.get_memory_enabled(user_id)
 
@@ -238,7 +238,7 @@ class MemoryService:
             "conversations": [],
             "trace_blocks": detail.get("trace_blocks") or 0,
             "embeddings": detail.get("embeddings") or 0,
-            "backend": detail.get("backend") or "aer",
+            "backend": detail.get("backend") or "er",
         }
 
     def _maybe_update_summary(self, conversation_id: int, sid: str) -> None:

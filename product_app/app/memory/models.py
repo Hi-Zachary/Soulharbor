@@ -55,14 +55,14 @@ class SpanTurn:
     position: int
     content: str
     created_at: int
-    is_focus: bool = False
+    is_anchor: bool = False
 
 
 @dataclass
 class Span:
     bundle_id: str
     conversation_id: int
-    focus_ids: List[int]
+    anchor_ids: List[int]
     messages: List[SpanTurn]
     fused_score: float
     rerank_score: Optional[float] = None
@@ -104,7 +104,7 @@ class RetrievalTrace:
     subquery_count: int = 1
     semantic_hits: int = 0
     lexical_hits: int = 0
-    focuses: int = 0
+    anchors: int = 0
     bundles: int = 0
     selected_bundles: int = 0
     profile_hits: int = 0
@@ -124,7 +124,7 @@ class RetrievalTrace:
             "subquery_count": self.subquery_count,
             "semantic_hits": self.semantic_hits,
             "lexical_hits": self.lexical_hits,
-            "focuses": self.focuses,
+            "anchors": self.anchors,
             "bundles": self.bundles,
             "selected_bundles": self.selected_bundles,
             "profile_hits": self.profile_hits,

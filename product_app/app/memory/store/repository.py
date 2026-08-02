@@ -93,6 +93,18 @@ CREATE TABLE IF NOT EXISTS memory_backfill_checkpoint (
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Window-level strength for decay-aware MMR / usage reinforcement.
+CREATE TABLE IF NOT EXISTS memory_window_strength (
+  user_id INTEGER NOT NULL,
+  window_key TEXT NOT NULL,
+  strength REAL NOT NULL DEFAULT 1.0,
+  reinforced_at INTEGER NOT NULL,
+  last_reinforce_conversation_id INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(user_id, window_key)
+);
+CREATE INDEX IF NOT EXISTS idx_window_strength_user
+  ON memory_window_strength(user_id);
 """
 
 
@@ -104,7 +116,7 @@ def content_hash(text: str) -> str:
     return hashlib.sha1((text or "").encode("utf-8")).hexdigest()
 
 
-def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_focus_at: int | None = None) -> List[Dict[str, Any]]:
+def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_anchor_at: int | None = None) -> List[Dict[str, Any]]:
     """Collapse multi-chunk rows into one dict per message_id."""
     seen: set[int] = set()
     out: List[Dict[str, Any]] = []
@@ -120,8 +132,8 @@ def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_focus_at: int | None =
             "content": str(row["content"]),
             "created_at": int(row["created_at"]),
         }
-        if mark_focus_at is not None:
-            item["is_focus"] = int(row["position"]) == int(mark_focus_at)
+        if mark_anchor_at is not None:
+            item["is_anchor"] = int(row["position"]) == int(mark_anchor_at)
         out.append(item)
     return out
 
@@ -366,7 +378,7 @@ class TraceStore:
                 "ORDER BY position ASC, chunk_index ASC",
                 (int(user_id), int(conversation_id), lo, hi),
             ).fetchall()
-            return _unique_messages(rows, mark_focus_at=int(position))
+            return _unique_messages(rows, mark_anchor_at=int(position))
 
     # --- deletes ------------------------------------------------------------
 
@@ -497,6 +509,77 @@ class TraceStore:
                     (uid,),
                 ).fetchone()["c"]
             return {"chunks": int(chunks), "embeddings": int(emb), "embed_retries": int(retry)}
+
+    # --- window strength (decay / reinforce) --------------------------------
+
+    def get_window_strength(
+        self, *, user_id: int, window_key: str
+    ) -> Optional[tuple[float, int, int]]:
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT strength, reinforced_at, last_reinforce_conversation_id "
+                "FROM memory_window_strength WHERE user_id=? AND window_key=?",
+                (int(user_id), str(window_key)),
+            ).fetchone()
+            if not row:
+                return None
+            return (
+                float(row["strength"]),
+                int(row["reinforced_at"]),
+                int(row["last_reinforce_conversation_id"]),
+            )
+
+    def get_window_strengths(
+        self, *, user_id: int, window_keys: Sequence[str]
+    ) -> Dict[str, tuple[float, int]]:
+        keys = [str(k) for k in window_keys if k]
+        if not keys:
+            return {}
+        out: Dict[str, tuple[float, int]] = {}
+        with self._db() as conn:
+            # SQLite has a variable bind limit; batch if needed.
+            chunk = 400
+            for i in range(0, len(keys), chunk):
+                part = keys[i : i + chunk]
+                placeholders = ",".join("?" for _ in part)
+                rows = conn.execute(
+                    "SELECT window_key, strength, reinforced_at "
+                    f"FROM memory_window_strength WHERE user_id=? AND window_key IN ({placeholders})",
+                    (int(user_id), *part),
+                ).fetchall()
+                for row in rows:
+                    out[str(row["window_key"])] = (
+                        float(row["strength"]),
+                        int(row["reinforced_at"]),
+                    )
+        return out
+
+    def upsert_window_strength(
+        self,
+        *,
+        user_id: int,
+        window_key: str,
+        strength: float,
+        reinforced_at: int,
+        conversation_id: int,
+    ) -> None:
+        with self._db() as conn:
+            conn.execute(
+                "INSERT INTO memory_window_strength("
+                "user_id, window_key, strength, reinforced_at, last_reinforce_conversation_id"
+                ") VALUES(?,?,?,?,?) "
+                "ON CONFLICT(user_id, window_key) DO UPDATE SET "
+                "strength=excluded.strength, "
+                "reinforced_at=excluded.reinforced_at, "
+                "last_reinforce_conversation_id=excluded.last_reinforce_conversation_id",
+                (
+                    int(user_id),
+                    str(window_key),
+                    float(strength),
+                    int(reinforced_at),
+                    int(conversation_id),
+                ),
+            )
 
     def get_checkpoint(self, key: str) -> Optional[str]:
         with self._db() as conn:

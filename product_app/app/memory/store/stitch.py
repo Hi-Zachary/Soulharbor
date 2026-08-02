@@ -1,4 +1,4 @@
-"""Stitch each retrieval focus into a short conversation span."""
+"""Stitch each retrieval anchor into a short conversation span."""
 from __future__ import annotations
 
 import hashlib
@@ -8,10 +8,10 @@ from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
 from product_app.app.memory.models import Span, RankedHit, SpanTurn
 from product_app.app.memory.store.repository import TraceStore
-from product_app.app.memory.store.text_sim import blob_of, cosine, entities, jaccard, tokens
+from product_app.app.memory.store.text_sim import blob_of, cosine, entities
 
 
-def _as_turn(row: dict, conversation_id: int, *, is_focus: bool = False) -> SpanTurn:
+def _as_turn(row: dict, conversation_id: int, *, is_anchor: bool = False) -> SpanTurn:
     return SpanTurn(
         message_id=int(row["message_id"]),
         conversation_id=int(conversation_id),
@@ -19,7 +19,7 @@ def _as_turn(row: dict, conversation_id: int, *, is_focus: bool = False) -> Span
         position=int(row["position"]),
         content=str(row["content"]),
         created_at=int(row["created_at"]),
-        is_focus=is_focus,
+        is_anchor=is_anchor,
     )
 
 
@@ -42,12 +42,12 @@ class SpanStitcher:
         self,
         *,
         user_id: int,
-        focuses: List[RankedHit],
+        anchors: List[RankedHit],
         queries: Optional[List[str]] = None,
     ) -> List[Span]:
         if (mem_cfg.stitch_mode or "adaptive").lower() == "fixed":
-            return self._fixed_windows(user_id, focuses, queries)
-        return self._adaptive_windows(user_id, focuses, queries)
+            return self._fixed_windows(user_id, anchors, queries)
+        return self._adaptive_windows(user_id, anchors, queries)
 
     # --- embeddings ---------------------------------------------------------
 
@@ -58,8 +58,6 @@ class SpanStitcher:
         return f"{len(raw)}:{digest}"
 
     def _vector(self, text: str) -> List[float]:
-        # Key on full text so long messages that share a prefix never collide.
-        # Embed the full string; the encoder applies its own max-length truncate.
         key = self._cache_key(text)
         cached = self._vec_cache.get(key)
         if cached is not None:
@@ -69,81 +67,59 @@ class SpanStitcher:
         self._vec_cache[key] = vec
         return vec
 
-    # --- adaptive scoring ---------------------------------------------------
-
-    def _continuity_score(
-        self,
-        candidate: SpanTurn,
-        focus: SpanTurn,
-        selected: Sequence[SpanTurn],
-        query: str,
-    ) -> float:
-        to_focus = cosine(self._vector(candidate.content), self._vector(focus.content))
-        to_window = cosine(self._vector(candidate.content), self._vector(blob_of(list(selected))))
-        entity_overlap = jaccard(
-            entities(candidate.content),
-            entities(focus.content) | entities(query),
-        )
-        positions = [t.position for t in selected]
-        dist = min(abs(candidate.position - min(positions)), abs(candidate.position - max(positions)))
-        if dist <= 1:
-            near = 1.0
-        elif dist == 2:
-            near = 0.5
-        else:
-            near = 0.0
-        query_overlap = jaccard(tokens(candidate.content), tokens(query))
-        return (
-            0.40 * to_focus
-            + 0.22 * to_window
-            + 0.18 * entity_overlap
-            + 0.10 * near
-            + 0.10 * query_overlap
-        )
+    # --- adaptive: cos primary + adjacent entity escape ---------------------
 
     def _keep_neighbor(
         self,
         candidate: SpanTurn,
-        focus: SpanTurn,
+        anchor: SpanTurn,
         selected: Sequence[SpanTurn],
-        query: str,
         threshold: float,
     ) -> bool:
-        score = self._continuity_score(candidate, focus, selected, query)
-        if score >= threshold:
+        """Include if cos(c, anchor) >= tau, or adjacent with shared entities."""
+        if cosine(self._vector(candidate.content), self._vector(anchor.content)) >= threshold:
             return True
-        # weak embedding but strong shared entities — still keep
-        shared = jaccard(entities(candidate.content), entities(focus.content))
-        return shared >= 0.35 and score >= threshold * 0.75
+
+        positions = [t.position for t in selected]
+        dist = min(
+            abs(candidate.position - min(positions)),
+            abs(candidate.position - max(positions)),
+        )
+        if dist > int(mem_cfg.stitch_entity_dist):
+            return False
+        window_ents = entities(blob_of(list(selected)))
+        return bool(entities(candidate.content) & window_ents)
 
     def _grow_from_hit(self, user_id: int, hit: RankedHit, query: str) -> Span:
+        del query  # expansion no longer uses query-overlap terms
         conv_id = int(hit.conversation_id)
         rows = self._store.list_conversation_messages(user_id=user_id, conversation_id=conv_id)
         by_pos = {int(r["position"]): r for r in rows}
 
         if hit.position not in by_pos:
-            focus = SpanTurn(
+            anchor = SpanTurn(
                 message_id=hit.message_id,
                 conversation_id=conv_id,
                 role=hit.role,
                 position=hit.position,
                 content=hit.content,
                 created_at=hit.created_at,
-                is_focus=True,
+                is_anchor=True,
             )
             return Span(
                 bundle_id=f"c{conv_id}-{hit.message_id}",
                 conversation_id=conv_id,
-                focus_ids=[hit.message_id],
-                messages=[focus],
+                anchor_ids=[hit.message_id],
+                messages=[anchor],
                 fused_score=float(hit.fused_score or 0.0),
             )
 
-        focus = _as_turn(by_pos[hit.position], conv_id, is_focus=True)
-        selected: List[SpanTurn] = [focus]
-        threshold = float(mem_cfg.stitch_continuity_threshold)
+        anchor = _as_turn(by_pos[hit.position], conv_id, is_anchor=True)
+        selected: List[SpanTurn] = [anchor]
+        threshold = float(mem_cfg.stitch_cos_threshold)
         max_span = int(mem_cfg.stitch_max_span)
         max_msgs = int(mem_cfg.bundle_max_messages)
+        max_misses = int(mem_cfg.stitch_max_misses)
 
         # walk left
         misses = 0
@@ -154,12 +130,12 @@ class SpanStitcher:
                 pos -= 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, focus, selected, query, threshold):
+            if self._keep_neighbor(cand, anchor, selected, threshold):
                 selected.insert(0, cand)
                 misses = 0
             else:
                 misses += 1
-                if misses >= 2:
+                if misses >= max_misses:
                     break
             pos -= 1
 
@@ -173,19 +149,19 @@ class SpanStitcher:
                 pos += 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, focus, selected, query, threshold):
+            if self._keep_neighbor(cand, anchor, selected, threshold):
                 selected.append(cand)
                 misses = 0
             else:
                 misses += 1
-                if misses >= 2:
+                if misses >= max_misses:
                     break
             pos += 1
 
         return Span(
             bundle_id=f"c{conv_id}-{hit.message_id}",
             conversation_id=conv_id,
-            focus_ids=[hit.message_id],
+            anchor_ids=[hit.message_id],
             messages=selected,
             fused_score=float(hit.fused_score or 0.0),
         )
@@ -193,17 +169,17 @@ class SpanStitcher:
     def _adaptive_windows(
         self,
         user_id: int,
-        focuses: List[RankedHit],
+        anchors: List[RankedHit],
         queries: Optional[List[str]],
     ) -> List[Span]:
         joined = " ".join(queries or [])
         windows = [
-            self._grow_from_hit(user_id, hit, joined or hit.content) for hit in focuses
+            self._grow_from_hit(user_id, hit, joined or hit.content) for hit in anchors
         ]
         for w in windows:
             w.retrieval_queries = list(queries or [])
         windows.sort(key=lambda w: w.fused_score, reverse=True)
-        keep = max(int(mem_cfg.bundle_top_k) * 2, int(mem_cfg.focus_top_k))
+        keep = max(int(mem_cfg.bundle_top_k) * 2, int(mem_cfg.anchor_top_k))
         return windows[:keep]
 
     # --- fixed neighbor windows ---------------------------------------------
@@ -211,16 +187,15 @@ class SpanStitcher:
     def _fixed_windows(
         self,
         user_id: int,
-        focuses: List[RankedHit],
+        anchors: List[RankedHit],
         queries: Optional[List[str]],
     ) -> List[Span]:
         before = int(mem_cfg.neighbor_before)
         after = int(mem_cfg.neighbor_after)
         max_msgs = int(mem_cfg.bundle_max_messages)
 
-        # group raw ranges by conversation
         ranges: Dict[int, List[Tuple[int, int, RankedHit]]] = {}
-        for hit in focuses:
+        for hit in anchors:
             ranges.setdefault(hit.conversation_id, []).append(
                 (hit.position - before, hit.position + after, hit)
             )
@@ -238,7 +213,7 @@ class SpanStitcher:
 
             for _lo, _hi, hits in merged:
                 by_id: Dict[int, SpanTurn] = {}
-                focus_ids = sorted({h.message_id for h in hits})
+                anchor_ids = sorted({h.message_id for h in hits})
                 best_score = max(h.fused_score for h in hits)
                 for hit in hits:
                     for row in self._store.neighbor_messages(
@@ -249,31 +224,31 @@ class SpanStitcher:
                         after=after,
                     ):
                         mid = int(row["message_id"])
-                        marked = mid in focus_ids
+                        marked = mid in anchor_ids
                         existing = by_id.get(mid)
                         if existing is None:
-                            by_id[mid] = _as_turn(row, conv_id, is_focus=marked)
+                            by_id[mid] = _as_turn(row, conv_id, is_anchor=marked)
                         elif marked:
-                            existing.is_focus = True
+                            existing.is_anchor = True
 
                 turns = sorted(by_id.values(), key=lambda t: t.position)
                 if len(turns) > max_msgs:
-                    focus_pos = {t.position for t in turns if t.is_focus}
-                    if not focus_pos:
+                    anchor_pos = {t.position for t in turns if t.is_anchor}
+                    if not anchor_pos:
                         turns = turns[:max_msgs]
                     else:
-                        center = sum(focus_pos) / len(focus_pos)
+                        center = sum(anchor_pos) / len(anchor_pos)
                         turns = sorted(
                             turns,
-                            key=lambda t: (0 if t.is_focus else 1, abs(t.position - center)),
+                            key=lambda t: (0 if t.is_anchor else 1, abs(t.position - center)),
                         )[:max_msgs]
                         turns = sorted(turns, key=lambda t: t.position)
 
                 out.append(
                     Span(
-                        bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in focus_ids[:4]),
+                        bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in anchor_ids[:4]),
                         conversation_id=conv_id,
-                        focus_ids=focus_ids,
+                        anchor_ids=anchor_ids,
                         messages=turns,
                         fused_score=best_score,
                         retrieval_queries=list(queries or []),

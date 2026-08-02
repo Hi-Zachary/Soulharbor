@@ -30,7 +30,7 @@ train/
 
 串联：`scripts/llamafactory/run/run_pt_then_sft.sh`、`run_main_sft_then_self_cognition.sh`。
 
-线上记忆走 AER（原文库），**不依赖写时抽取训练阶段**。
+线上记忆走 ER（原文库），**不依赖写时抽取训练阶段**。
 
 ## 两种跑法
 
