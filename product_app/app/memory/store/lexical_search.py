@@ -1,4 +1,4 @@
-"""Character / n-gram BM25 search over episode text."""
+"""Character / n-gram BM25 search over trace text."""
 from __future__ import annotations
 
 import math
@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.models import RankedHit
-from product_app.app.memory.store.repository import EpisodeStore
+from product_app.app.memory.store.repository import TraceStore
 
 _TOKEN = re.compile(r"[\u4e00-\u9fff]|[A-Za-z0-9_]+")
 _K1 = 1.5
@@ -41,7 +41,7 @@ def _tokenize(text: str) -> List[str]:
 
 
 class LexicalSearcher:
-    def __init__(self, store: EpisodeStore) -> None:
+    def __init__(self, store: TraceStore) -> None:
         self._store = store
 
     def search(

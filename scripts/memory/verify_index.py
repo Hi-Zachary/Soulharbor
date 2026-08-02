@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify episode index integrity."""
+"""Verify trace index integrity."""
 from __future__ import annotations
 
 import argparse
@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from product_app.app.memory.store.repository import EpisodeStore  # noqa: E402
+from product_app.app.memory.store.repository import TraceStore  # noqa: E402
 
 
 def main() -> int:
@@ -18,7 +18,7 @@ def main() -> int:
     ap.add_argument("--db", required=True)
     ap.add_argument("--user-id", type=int, default=None)
     args = ap.parse_args()
-    repo = EpisodeStore(args.db)
+    repo = TraceStore(args.db)
     repo.init()
     stats = repo.index_stats(args.user_id)
     missing = stats["chunks"] - stats["embeddings"]

@@ -1,4 +1,4 @@
-"""Grow each search seed into a short conversation window."""
+"""Stitch each retrieval focus into a short conversation span."""
 from __future__ import annotations
 
 import hashlib
@@ -6,48 +6,48 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import EpisodeWindow, RankedHit, WindowTurn
-from product_app.app.memory.store.repository import EpisodeStore
+from product_app.app.memory.models import Span, RankedHit, SpanTurn
+from product_app.app.memory.store.repository import TraceStore
 from product_app.app.memory.store.text_sim import blob_of, cosine, entities, jaccard, tokens
 
 
-def _as_turn(row: dict, conversation_id: int, *, is_seed: bool = False) -> WindowTurn:
-    return WindowTurn(
+def _as_turn(row: dict, conversation_id: int, *, is_focus: bool = False) -> SpanTurn:
+    return SpanTurn(
         message_id=int(row["message_id"]),
         conversation_id=int(conversation_id),
         role=str(row["role"]),
         position=int(row["position"]),
         content=str(row["content"]),
         created_at=int(row["created_at"]),
-        is_seed=is_seed,
+        is_focus=is_focus,
     )
 
 
-def _window_span(turns: Sequence[WindowTurn]) -> int:
+def _window_span(turns: Sequence[SpanTurn]) -> int:
     if not turns:
         return 0
     positions = [t.position for t in turns]
     return max(positions) - min(positions) + 1
 
 
-class WindowExpander:
+class SpanStitcher:
     """Turn ranked hits into multi-turn windows (adaptive walk or fixed neighbors)."""
 
-    def __init__(self, store: EpisodeStore, embedder: Optional[MemoryEmbedder] = None) -> None:
+    def __init__(self, store: TraceStore, embedder: Optional[MemoryEmbedder] = None) -> None:
         self._store = store
         self._embedder = embedder
         self._vec_cache: Dict[str, List[float]] = {}
 
-    def expand(
+    def stitch(
         self,
         *,
         user_id: int,
-        seeds: List[RankedHit],
+        focuses: List[RankedHit],
         queries: Optional[List[str]] = None,
-    ) -> List[EpisodeWindow]:
-        if (mem_cfg.expand_mode or "adaptive").lower() == "fixed":
-            return self._fixed_windows(user_id, seeds, queries)
-        return self._adaptive_windows(user_id, seeds, queries)
+    ) -> List[Span]:
+        if (mem_cfg.stitch_mode or "adaptive").lower() == "fixed":
+            return self._fixed_windows(user_id, focuses, queries)
+        return self._adaptive_windows(user_id, focuses, queries)
 
     # --- embeddings ---------------------------------------------------------
 
@@ -73,16 +73,16 @@ class WindowExpander:
 
     def _continuity_score(
         self,
-        candidate: WindowTurn,
-        seed: WindowTurn,
-        selected: Sequence[WindowTurn],
+        candidate: SpanTurn,
+        focus: SpanTurn,
+        selected: Sequence[SpanTurn],
         query: str,
     ) -> float:
-        to_seed = cosine(self._vector(candidate.content), self._vector(seed.content))
+        to_focus = cosine(self._vector(candidate.content), self._vector(focus.content))
         to_window = cosine(self._vector(candidate.content), self._vector(blob_of(list(selected))))
         entity_overlap = jaccard(
             entities(candidate.content),
-            entities(seed.content) | entities(query),
+            entities(focus.content) | entities(query),
         )
         positions = [t.position for t in selected]
         dist = min(abs(candidate.position - min(positions)), abs(candidate.position - max(positions)))
@@ -94,7 +94,7 @@ class WindowExpander:
             near = 0.0
         query_overlap = jaccard(tokens(candidate.content), tokens(query))
         return (
-            0.40 * to_seed
+            0.40 * to_focus
             + 0.22 * to_window
             + 0.18 * entity_overlap
             + 0.10 * near
@@ -103,46 +103,46 @@ class WindowExpander:
 
     def _keep_neighbor(
         self,
-        candidate: WindowTurn,
-        seed: WindowTurn,
-        selected: Sequence[WindowTurn],
+        candidate: SpanTurn,
+        focus: SpanTurn,
+        selected: Sequence[SpanTurn],
         query: str,
         threshold: float,
     ) -> bool:
-        score = self._continuity_score(candidate, seed, selected, query)
+        score = self._continuity_score(candidate, focus, selected, query)
         if score >= threshold:
             return True
         # weak embedding but strong shared entities — still keep
-        shared = jaccard(entities(candidate.content), entities(seed.content))
+        shared = jaccard(entities(candidate.content), entities(focus.content))
         return shared >= 0.35 and score >= threshold * 0.75
 
-    def _grow_from_hit(self, user_id: int, hit: RankedHit, query: str) -> EpisodeWindow:
+    def _grow_from_hit(self, user_id: int, hit: RankedHit, query: str) -> Span:
         conv_id = int(hit.conversation_id)
         rows = self._store.list_conversation_messages(user_id=user_id, conversation_id=conv_id)
         by_pos = {int(r["position"]): r for r in rows}
 
         if hit.position not in by_pos:
-            seed = WindowTurn(
+            focus = SpanTurn(
                 message_id=hit.message_id,
                 conversation_id=conv_id,
                 role=hit.role,
                 position=hit.position,
                 content=hit.content,
                 created_at=hit.created_at,
-                is_seed=True,
+                is_focus=True,
             )
-            return EpisodeWindow(
+            return Span(
                 bundle_id=f"c{conv_id}-{hit.message_id}",
                 conversation_id=conv_id,
-                seed_ids=[hit.message_id],
-                messages=[seed],
+                focus_ids=[hit.message_id],
+                messages=[focus],
                 fused_score=float(hit.fused_score or 0.0),
             )
 
-        seed = _as_turn(by_pos[hit.position], conv_id, is_seed=True)
-        selected: List[WindowTurn] = [seed]
-        threshold = float(mem_cfg.expansion_continuity_threshold)
-        max_span = int(mem_cfg.expansion_max_span)
+        focus = _as_turn(by_pos[hit.position], conv_id, is_focus=True)
+        selected: List[SpanTurn] = [focus]
+        threshold = float(mem_cfg.stitch_continuity_threshold)
+        max_span = int(mem_cfg.stitch_max_span)
         max_msgs = int(mem_cfg.bundle_max_messages)
 
         # walk left
@@ -154,7 +154,7 @@ class WindowExpander:
                 pos -= 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, seed, selected, query, threshold):
+            if self._keep_neighbor(cand, focus, selected, query, threshold):
                 selected.insert(0, cand)
                 misses = 0
             else:
@@ -173,7 +173,7 @@ class WindowExpander:
                 pos += 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, seed, selected, query, threshold):
+            if self._keep_neighbor(cand, focus, selected, query, threshold):
                 selected.append(cand)
                 misses = 0
             else:
@@ -182,10 +182,10 @@ class WindowExpander:
                     break
             pos += 1
 
-        return EpisodeWindow(
+        return Span(
             bundle_id=f"c{conv_id}-{hit.message_id}",
             conversation_id=conv_id,
-            seed_ids=[hit.message_id],
+            focus_ids=[hit.message_id],
             messages=selected,
             fused_score=float(hit.fused_score or 0.0),
         )
@@ -193,17 +193,17 @@ class WindowExpander:
     def _adaptive_windows(
         self,
         user_id: int,
-        seeds: List[RankedHit],
+        focuses: List[RankedHit],
         queries: Optional[List[str]],
-    ) -> List[EpisodeWindow]:
+    ) -> List[Span]:
         joined = " ".join(queries or [])
         windows = [
-            self._grow_from_hit(user_id, hit, joined or hit.content) for hit in seeds
+            self._grow_from_hit(user_id, hit, joined or hit.content) for hit in focuses
         ]
         for w in windows:
             w.retrieval_queries = list(queries or [])
         windows.sort(key=lambda w: w.fused_score, reverse=True)
-        keep = max(int(mem_cfg.bundle_top_k) * 2, int(mem_cfg.seed_top_k))
+        keep = max(int(mem_cfg.bundle_top_k) * 2, int(mem_cfg.focus_top_k))
         return windows[:keep]
 
     # --- fixed neighbor windows ---------------------------------------------
@@ -211,21 +211,21 @@ class WindowExpander:
     def _fixed_windows(
         self,
         user_id: int,
-        seeds: List[RankedHit],
+        focuses: List[RankedHit],
         queries: Optional[List[str]],
-    ) -> List[EpisodeWindow]:
+    ) -> List[Span]:
         before = int(mem_cfg.neighbor_before)
         after = int(mem_cfg.neighbor_after)
         max_msgs = int(mem_cfg.bundle_max_messages)
 
         # group raw ranges by conversation
         ranges: Dict[int, List[Tuple[int, int, RankedHit]]] = {}
-        for hit in seeds:
+        for hit in focuses:
             ranges.setdefault(hit.conversation_id, []).append(
                 (hit.position - before, hit.position + after, hit)
             )
 
-        out: List[EpisodeWindow] = []
+        out: List[Span] = []
         for conv_id, items in ranges.items():
             items.sort(key=lambda x: x[0])
             merged: List[Tuple[int, int, List[RankedHit]]] = []
@@ -237,8 +237,8 @@ class WindowExpander:
                     merged.append((lo, hi, [hit]))
 
             for _lo, _hi, hits in merged:
-                by_id: Dict[int, WindowTurn] = {}
-                seed_ids = sorted({h.message_id for h in hits})
+                by_id: Dict[int, SpanTurn] = {}
+                focus_ids = sorted({h.message_id for h in hits})
                 best_score = max(h.fused_score for h in hits)
                 for hit in hits:
                     for row in self._store.neighbor_messages(
@@ -249,31 +249,31 @@ class WindowExpander:
                         after=after,
                     ):
                         mid = int(row["message_id"])
-                        marked = mid in seed_ids
+                        marked = mid in focus_ids
                         existing = by_id.get(mid)
                         if existing is None:
-                            by_id[mid] = _as_turn(row, conv_id, is_seed=marked)
+                            by_id[mid] = _as_turn(row, conv_id, is_focus=marked)
                         elif marked:
-                            existing.is_seed = True
+                            existing.is_focus = True
 
                 turns = sorted(by_id.values(), key=lambda t: t.position)
                 if len(turns) > max_msgs:
-                    seed_pos = {t.position for t in turns if t.is_seed}
-                    if not seed_pos:
+                    focus_pos = {t.position for t in turns if t.is_focus}
+                    if not focus_pos:
                         turns = turns[:max_msgs]
                     else:
-                        center = sum(seed_pos) / len(seed_pos)
+                        center = sum(focus_pos) / len(focus_pos)
                         turns = sorted(
                             turns,
-                            key=lambda t: (0 if t.is_seed else 1, abs(t.position - center)),
+                            key=lambda t: (0 if t.is_focus else 1, abs(t.position - center)),
                         )[:max_msgs]
                         turns = sorted(turns, key=lambda t: t.position)
 
                 out.append(
-                    EpisodeWindow(
-                        bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in seed_ids[:4]),
+                    Span(
+                        bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in focus_ids[:4]),
                         conversation_id=conv_id,
-                        seed_ids=seed_ids,
+                        focus_ids=focus_ids,
                         messages=turns,
                         fused_score=best_score,
                         retrieval_queries=list(queries or []),

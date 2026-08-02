@@ -1,8 +1,8 @@
 # SoulHarbor
 
-校园心理健康辅助对话系统。生产入口：`product_app/`。
+校园心理健康辅助对话系统。运行入口：`product_app/`。
 
-**先读故事（终稿）**：[项目文档/00_SoulHarbor故事与终稿叙事.md](项目文档/00_SoulHarbor故事与终稿叙事.md)  
+**先读故事**：[项目文档/00_SoulHarbor故事与终稿叙事.md](项目文档/00_SoulHarbor故事与终稿叙事.md)  
 **文档索引**：[项目文档/README.md](项目文档/README.md)
 
 ## 运行时目录
@@ -19,7 +19,7 @@ SoulHarbor/
 ├── train/                # 微调脚本 + configs/*.yaml
 ├── evaluate/
 │   ├── dialogue/         # 主对话评测（data / runs / sampling / runners）
-│   └── memory/           # 长期记忆 QA（data/all_30.jsonl · runs · episodic_eval）
+│   └── memory/           # 长期记忆 QA（data/all_30.jsonl · runs · aer_eval）
 ├── 项目文档/             # 00 故事 → 01–06 技术与评测
 └── archive/              # 非运行时历史（本地，不入库）
 ```
@@ -35,12 +35,12 @@ bash product_app/start.sh
 - 用户端：http://localhost:8000/app  
 - 管理端：http://localhost:8000/admin/login（默认口令 `soulharbor_admin`）  
 
-## 双线能力（终稿）
+## 双线能力
 
 | 线 | 做什么 | 证据 |
 |---|---|---|
-| **对话微调** | Qwen3-14B QLoRA：PT→SFT→自我认知→DPO；MacBERT-base 分流；咨询/闲聊不同 LoRA scale、摘要走裸基座 | `train/` · `evaluate/dialogue/runs/` |
-| **长期记忆 AER** | 原文入库 + 查询时扩窗重建；consent Profile；尽量整段注入 | `项目文档/05`·`06` · QA≈91% vs Mem0≈64% |
+| **对话微调** | Qwen3-14B QLoRA：PT→SFT→DPO；MacBERT 分流；咨询/闲聊不同 LoRA scale，摘要走裸基座 | `train/` · `evaluate/dialogue/runs/` |
+| **长期记忆 AER** | 原文入库 + 查询时扩窗重建；确认制 Profile；尽量整段注入用户原文 | `项目文档/05`·`06` · QA≈91% vs Mem0≈64% |
 
 ## 记忆系统
 

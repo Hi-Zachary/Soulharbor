@@ -9,6 +9,14 @@ def _b(name: str, default: str = "1") -> bool:
     return os.environ.get(name, default) != "0"
 
 
+def _env(*names: str, default: str) -> str:
+    """Prefer the first defined env var (supports brief legacy aliases)."""
+    for name in names:
+        if name in os.environ:
+            return os.environ[name]
+    return default
+
+
 @dataclass(frozen=True)
 class MemorySettings:
     # aer only (other values disable long-term memory)
@@ -19,7 +27,7 @@ class MemorySettings:
     profile_llm_propose: bool = _b("MEMORY_PROFILE_LLM_PROPOSE", "1")
     profile_llm_propose_max: int = int(os.environ.get("MEMORY_PROFILE_LLM_PROPOSE_MAX", "1"))
     profile_llm_skip_if_pending: bool = _b("MEMORY_PROFILE_LLM_SKIP_IF_PENDING", "1")
-    # MemMachine-like batching: propose after N new messages or age (seconds).
+    # Batch-gated propose: after N new messages or age (seconds).
     profile_llm_trigger_messages: int = int(
         os.environ.get("MEMORY_PROFILE_LLM_TRIGGER_MESSAGES", "5")
     )
@@ -32,11 +40,17 @@ class MemorySettings:
 
     # Adaptive Experience Reconstruction
     # fixed | adaptive
-    expand_mode: str = os.environ.get("MEMORY_EXPAND_MODE", "adaptive")
-    expansion_continuity_threshold: float = float(
-        os.environ.get("MEMORY_CONTINUITY_THRESHOLD", "0.28")
+    stitch_mode: str = _env("MEMORY_STITCH_MODE", "MEMORY_EXPAND_MODE", default="adaptive")
+    stitch_continuity_threshold: float = float(
+        _env(
+            "MEMORY_STITCH_CONTINUITY_THRESHOLD",
+            "MEMORY_CONTINUITY_THRESHOLD",
+            default="0.28",
+        )
     )
-    expansion_max_span: int = int(os.environ.get("MEMORY_EXPAND_MAX_SPAN", "12"))
+    stitch_max_span: int = int(
+        _env("MEMORY_STITCH_MAX_SPAN", "MEMORY_EXPAND_MAX_SPAN", default="12")
+    )
     # topk | coverage
     evidence_selection_mode: str = os.environ.get("EVIDENCE_SELECTION_MODE", "coverage")
     cross_session_linking: bool = _b("MEMORY_CROSS_SESSION_LINKING", "1")
@@ -45,7 +59,7 @@ class MemorySettings:
     context_token_budget: int = int(os.environ.get("MEMORY_CONTEXT_TOKEN_BUDGET", "1600"))
     semantic_top_k: int = int(os.environ.get("MEMORY_SEMANTIC_TOP_K", "30"))
     lexical_top_k: int = int(os.environ.get("MEMORY_LEXICAL_TOP_K", "30"))
-    seed_top_k: int = int(os.environ.get("MEMORY_SEED_TOP_K", "8"))
+    focus_top_k: int = int(_env("MEMORY_FOCUS_TOP_K", "MEMORY_SEED_TOP_K", default="8"))
     bundle_top_k: int = int(os.environ.get("MEMORY_WINDOW_TOP_K", "6"))
     neighbor_before: int = int(os.environ.get("MEMORY_NEIGHBOR_BEFORE", "2"))
     neighbor_after: int = int(os.environ.get("MEMORY_NEIGHBOR_AFTER", "2"))

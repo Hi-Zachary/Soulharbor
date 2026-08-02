@@ -1,4 +1,4 @@
-"""Run hybrid search for each subquery, then merge seeds."""
+"""Run hybrid search for each subquery, then merge focuses."""
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Set, Tuple
@@ -25,7 +25,7 @@ class SplitQueryRetriever:
         sparse_total = 0
 
         for subquery in queries:
-            seeds, n_dense, n_sparse = self._direct.retrieve(
+            focuses, n_dense, n_sparse = self._direct.retrieve(
                 user_id=user_id,
                 query=subquery,
                 exclude_message_ids=exclude_message_ids,
@@ -33,7 +33,7 @@ class SplitQueryRetriever:
             dense_total += n_dense
             sparse_total += n_sparse
 
-            for rank, hit in enumerate(seeds, start=1):
+            for rank, hit in enumerate(focuses, start=1):
                 existing = merged.get(hit.chunk_id)
                 if existing is None:
                     hit.fused_score = reciprocal_rank(rank)
@@ -49,4 +49,4 @@ class SplitQueryRetriever:
                         existing.lexical_rank = hit.lexical_rank
 
         ranked = sorted(merged.values(), key=lambda h: h.fused_score, reverse=True)
-        return ranked[: int(mem_cfg.seed_top_k)], dense_total, sparse_total
+        return ranked[: int(mem_cfg.focus_top_k)], dense_total, sparse_total

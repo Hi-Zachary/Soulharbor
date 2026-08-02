@@ -377,8 +377,8 @@
         const prefs = detail.preferences || detail.memories || [];
         const metrics = detail.recent_metrics || [];
         const stats = detail.stats || {};
-        const chunks = Number(detail.episode_chunks || 0);
-        let html = `<div class="rounded-2xl border border-sky-200 bg-white/80 p-4"><div class="text-sm font-bold text-sky-800">${esc(hash)} · 简要画像</div><div class="mt-2 text-xs text-slate-600">会话 ${Number(stats.conversation_count || 0)} · 消息 ${Number(stats.message_count || 0)} · Episode 块 ${chunks} · 最近活跃 ${fmtTime(stats.last_seen)}</div><div class="mt-4 space-y-3 text-xs leading-6 text-slate-600">`;
+        const chunks = Number(detail.trace_blocks || 0);
+        let html = `<div class="rounded-2xl border border-sky-200 bg-white/80 p-4"><div class="text-sm font-bold text-sky-800">${esc(hash)} · 简要画像</div><div class="mt-2 text-xs text-slate-600">会话 ${Number(stats.conversation_count || 0)} · 消息 ${Number(stats.message_count || 0)} · Trace Block ${chunks} · 最近活跃 ${fmtTime(stats.last_seen)}</div><div class="mt-4 space-y-3 text-xs leading-6 text-slate-600">`;
         html += `<div><div class="font-semibold text-slate-700">已确认支持偏好</div><div>${prefs.length ? prefs.map((m) => `<div class="rounded-xl border p-3 mb-2 text-sm bg-white border-l-[3px] border-l-teal-500"><div class="flex items-center gap-2 mb-1"><span class="mem-type" style="background:#0d948815;color:#0d9488">${esc(m.origin || 'confirmed')}</span></div><div class="text-slate-700 leading-relaxed">${esc(m.content || '')}</div></div>`).join('') : '暂无已确认偏好'}</div></div>`;
         html += `<div><div class="font-semibold text-slate-700">近期分流记录</div><div>${metrics.length ? metrics.slice(0, 5).map((m) => `• ${fmtTime(m.created_at)} · ${esc(routeLabel(m.route || (m.is_consult ? 'consult' : 'chat')))}`).join('<br>') : '暂无记录'}</div></div>`;
         html += `</div></div>`;
@@ -447,8 +447,8 @@
         const j = await fetchJson('/admin/api/users/' + hash + '/profile');
         const p = j.profile;
         const prefs = p.preferences || p.memories || [];
-        const chunks = Number(p.episode_chunks || 0);
-        document.getElementById('profile-meta').textContent = esc(hash) + ' · ' + prefs.length + ' 条偏好 · ' + chunks + ' 个 Episode 块';
+        const chunks = Number(p.trace_blocks || 0);
+        document.getElementById('profile-meta').textContent = esc(hash) + ' · ' + prefs.length + ' 条偏好 · ' + chunks + ' 个 Trace Block';
         let html = `<div class="flex gap-2 mb-4"><button class="px-3 py-1.5 rounded-lg bg-teal-500 text-white text-xs font-medium hover:bg-teal-600 transition-colors" onclick="closeProfile();viewUserConversations('${hash}')">查看该用户全部会话</button></div>`;
         html += '<div class="font-semibold text-sm text-teal-800 mb-3">已确认支持偏好</div>';
         if (prefs.length === 0) html += '<div class="text-sm text-slate-400 py-4">暂无已确认偏好</div>';

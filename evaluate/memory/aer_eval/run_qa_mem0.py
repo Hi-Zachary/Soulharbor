@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Long-horizon QA eval for official Mem0 on the same protocol as episodic_eval.
+"""Long-horizon QA eval for official Mem0 on the same protocol as aer_eval.
 
-Uses the same reader / judge / content_f1 scoring as run_qa_episodic.py so
+Uses the same reader / judge / content_f1 scoring as run_qa_aer.py so
 results are comparable on evaluate/memory/data (the final eval set).
 
   python run_qa_mem0.py --selftest
@@ -28,7 +28,7 @@ sys.path.insert(0, str(PROJECT))
 
 from api_llm import APILLM  # noqa: E402
 from mem0_adapter import Mem0Adapter, _ensure_shared_sentence_transformer  # noqa: E402
-from run_qa_episodic import (  # noqa: E402
+from run_qa_aer import (  # noqa: E402
     _load_cases,
     content_f1,
     load_config,
@@ -281,16 +281,21 @@ def main() -> None:
     results.sort(key=lambda r: order.get(str(r.get("case_id")), 10**9))
 
     epi_ref = None
-    epi_runs = sorted((PROJECT / "evaluate/memory/runs").glob("qa_episodic_*/summary.json"), reverse=True)
+    runs_root = PROJECT / "evaluate/memory/runs"
+    epi_runs = sorted(
+        list(runs_root.glob("qa_aer_*/summary.json"))
+        + list(runs_root.glob("qa_episodic_*/summary.json")),
+        reverse=True,
+    )
     for p in epi_runs:
         try:
             s = json.loads(p.read_text(encoding="utf-8"))
             data_s = str(s.get("data") or "").replace("\\", "/")
             if "/memory/data" in data_s or "data_episodic" in data_s:
                 epi_ref = {
-                    "qa_accuracy": (s.get("methods") or {}).get("episodic", {}).get("qa_accuracy"),
+                    "qa_accuracy": (s.get("methods") or {}).get("trace", {}).get("qa_accuracy"),
                     "run_dir": s.get("run_dir"),
-                    "note": "Same-protocol episodic run on evaluate/memory/data.",
+                    "note": "Same-protocol trace run on evaluate/memory/data.",
                 }
                 break
         except Exception:

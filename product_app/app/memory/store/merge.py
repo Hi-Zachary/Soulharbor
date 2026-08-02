@@ -4,15 +4,15 @@ from __future__ import annotations
 from typing import Dict, List
 
 from product_app.app.memory.config import mem_cfg
-from product_app.app.memory.models import EpisodeWindow, WindowTurn
+from product_app.app.memory.models import Span, SpanTurn
 
 
-def merge_windows(windows: List[EpisodeWindow]) -> List[EpisodeWindow]:
-    by_conversation: Dict[int, List[EpisodeWindow]] = {}
+def merge_windows(windows: List[Span]) -> List[Span]:
+    by_conversation: Dict[int, List[Span]] = {}
     for window in windows:
         by_conversation.setdefault(window.conversation_id, []).append(window)
 
-    merged_all: List[EpisodeWindow] = []
+    merged_all: List[Span] = []
     max_msgs = int(mem_cfg.bundle_max_messages)
 
     for conv_id, group in by_conversation.items():
@@ -20,7 +20,7 @@ def merge_windows(windows: List[EpisodeWindow]) -> List[EpisodeWindow]:
             group,
             key=lambda w: (min((t.position for t in w.messages), default=0), -w.fused_score),
         )
-        merged: List[EpisodeWindow] = []
+        merged: List[Span] = []
         for window in group:
             if not merged:
                 merged.append(window)
@@ -36,38 +36,38 @@ def merge_windows(windows: List[EpisodeWindow]) -> List[EpisodeWindow]:
                 merged.append(window)
                 continue
 
-            turns: Dict[int, WindowTurn] = {t.message_id: t for t in prev.messages}
+            turns: Dict[int, SpanTurn] = {t.message_id: t for t in prev.messages}
             for turn in window.messages:
                 existing = turns.get(turn.message_id)
                 if existing is None:
                     turns[turn.message_id] = turn
-                elif turn.is_seed:
-                    existing.is_seed = True
+                elif turn.is_focus:
+                    existing.is_focus = True
 
             messages = sorted(turns.values(), key=lambda t: t.position)
             if len(messages) > max_msgs:
-                seed_pos = {t.position for t in messages if t.is_seed}
+                focus_pos = {t.position for t in messages if t.is_focus}
                 center = (
-                    sum(seed_pos) / len(seed_pos)
-                    if seed_pos
+                    sum(focus_pos) / len(focus_pos)
+                    if focus_pos
                     else messages[len(messages) // 2].position
                 )
                 messages = sorted(
                     messages,
-                    key=lambda t: (0 if t.is_seed else 1, abs(t.position - center)),
+                    key=lambda t: (0 if t.is_focus else 1, abs(t.position - center)),
                 )[:max_msgs]
                 messages = sorted(messages, key=lambda t: t.position)
 
-            seed_ids = sorted(
-                {t.message_id for t in messages if t.is_seed} or prev.seed_ids
+            focus_ids = sorted(
+                {t.message_id for t in messages if t.is_focus} or prev.focus_ids
             )
             queries = list(
                 dict.fromkeys((prev.retrieval_queries or []) + (window.retrieval_queries or []))
             )
-            merged[-1] = EpisodeWindow(
-                bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in seed_ids[:4]),
+            merged[-1] = Span(
+                bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in focus_ids[:4]),
                 conversation_id=conv_id,
-                seed_ids=seed_ids,
+                focus_ids=focus_ids,
                 messages=messages,
                 fused_score=max(prev.fused_score, window.fused_score),
                 retrieval_queries=queries,

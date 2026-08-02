@@ -6,25 +6,25 @@ from typing import List, Optional, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import EpisodeWindow
+from product_app.app.memory.models import Span
 from product_app.app.memory.store.text_sim import blob_of, cosine, entities, jaccard, tokens
 
 
-def _earliest(window: EpisodeWindow) -> int:
+def _earliest(window: Span) -> int:
     if not window.messages:
         return 0
     return min(int(t.created_at) for t in window.messages)
 
 
-def _latest(window: EpisodeWindow) -> int:
+def _latest(window: Span) -> int:
     if not window.messages:
         return 0
     return max(int(t.created_at) for t in window.messages)
 
 
 def _link_strength(
-    left: EpisodeWindow,
-    right: EpisodeWindow,
+    left: Span,
+    right: Span,
     *,
     query: str,
     left_vec: List[float],
@@ -63,9 +63,9 @@ def _link_strength(
 def link_windows(
     *,
     query: str,
-    bundles: List[EpisodeWindow],
+    bundles: List[Span],
     embedder: Optional[MemoryEmbedder] = None,
-) -> Tuple[List[EpisodeWindow], int]:
+) -> Tuple[List[Span], int]:
     """Annotate windows with chain_id / chain_index. Returns (windows, chain_count)."""
     windows = bundles
     if not mem_cfg.cross_session_linking or len(windows) <= 1:
@@ -86,11 +86,11 @@ def link_windows(
     used: set[int] = set()
     chains: List[List[int]] = []
 
-    for seed_idx in order:
-        if seed_idx in used:
+    for start_idx in order:
+        if start_idx in used:
             continue
-        chain = [seed_idx]
-        used.add(seed_idx)
+        chain = [start_idx]
+        used.add(start_idx)
 
         growing = True
         while growing:
@@ -121,7 +121,7 @@ def link_windows(
         chains.append(chain)
 
     chains.sort(key=lambda ch: min(_earliest(windows[i]) for i in ch))
-    result: List[EpisodeWindow] = []
+    result: List[Span] = []
     for chain_no, chain in enumerate(chains, start=1):
         ordered = sorted(chain, key=lambda i: _earliest(windows[i]))
         label = f"E{chain_no}" if len(chains) > 1 or len(ordered) > 1 else None

@@ -5,12 +5,12 @@ from typing import Callable, List, Optional
 
 from product_app.app.memory.context.formatter import format_sections
 from product_app.app.memory.context.token_budget import estimate_tokens, trim_lines_to_budget
-from product_app.app.memory.models import EpisodeWindow, ProfileItem
+from product_app.app.memory.models import Span, ProfileItem
 
 
 def build_memory_block(
     *,
-    bundles: List[EpisodeWindow],
+    bundles: List[Span],
     profiles: List[ProfileItem],
     token_budget: int = 1600,
     token_counter: Optional[Callable[[str], int]] = None,

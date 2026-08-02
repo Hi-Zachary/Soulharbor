@@ -6,7 +6,7 @@ import re
 from typing import List, Tuple
 
 from product_app.app.memory.config import mem_cfg
-from product_app.app.memory.models import EpisodeWindow
+from product_app.app.memory.models import Span
 
 _CHARS = re.compile(r"[\u4e00-\u9fff]|[A-Za-z0-9_]+")
 
@@ -20,9 +20,9 @@ class WindowReranker:
         self,
         *,
         query: str,
-        bundles: List[EpisodeWindow],
+        bundles: List[Span],
         limit: int | None = None,
-    ) -> List[EpisodeWindow]:
+    ) -> List[Span]:
         windows = bundles
         top_n = int(limit or mem_cfg.bundle_top_k)
         if not windows:
@@ -30,12 +30,12 @@ class WindowReranker:
         if not mem_cfg.rerank_enabled:
             return windows[:top_n]
 
-        scored: List[Tuple[float, EpisodeWindow]] = [
+        scored: List[Tuple[float, Span]] = [
             (self._score(query, window), window) for window in windows
         ]
         scored.sort(key=lambda pair: pair[0], reverse=True)
 
-        result: List[EpisodeWindow] = []
+        result: List[Span] = []
         for score, window in scored[:top_n]:
             window.rerank_score = score
             result.append(window)
@@ -47,7 +47,7 @@ class WindowReranker:
                 window.rerank_score = scored[i][0]
         return result
 
-    def _score(self, query: str, window: EpisodeWindow) -> float:
+    def _score(self, query: str, window: Span) -> float:
         q = _char_set(query)
         text = "\n".join(t.content for t in window.messages)
         d = _char_set(text)

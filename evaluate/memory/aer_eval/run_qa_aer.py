@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Long-horizon QA eval for SoulHarbor episodic memory (API LLM).
+"""Long-horizon QA eval for SoulHarbor trace memory (API LLM).
 
-Only evaluates the AER episodic backend (Mem0 baseline is a separate harness).
+Only evaluates the AER trace backend (Mem0 baseline is a separate harness).
 Mem0 baseline from 2026-07-30 remains the frozen reference.
 
-  python run_qa_episodic.py --selftest
-  python run_qa_episodic.py --limit 1 --workers 1
-  python run_qa_episodic.py --workers 4 --qa-workers 3
+  python run_qa_aer.py --selftest
+  python run_qa_aer.py --limit 1 --workers 1
+  python run_qa_aer.py --workers 4 --qa-workers 3
 """
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def _prepare_cpu_embedder() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Episodic method
+# Trace method
 # ---------------------------------------------------------------------------
 
 
@@ -83,7 +83,7 @@ class EpisodicMethod:
 
         work_dir = Path(work_dir)
         work_dir.mkdir(parents=True, exist_ok=True)
-        self._db_path = work_dir / "episodic.db"
+        self._db_path = work_dir / "trace.db"
         self._llm = llm
         self._engine = MemoryEngine(self._db_path, llm=llm)
         self._user_id = 1
@@ -148,7 +148,7 @@ class EpisodicMethod:
         stats = self._engine._store.index_stats(self._user_id)
         return {
             "backend": "aer",
-            "episode_chunks": info.get("episode_chunks"),
+            "trace_blocks": info.get("trace_blocks"),
             "support_preferences": info.get("support_preferences"),
             "index": stats,
             "facts": self.list_facts()[:40],
@@ -318,7 +318,7 @@ def run_case(case: Dict[str, Any], *, llm: Any, work_dir: Path, qa_workers: int)
 
     out: Dict[str, Any] = {"case_id": case_id, "category": case.get("category"), "methods": {}}
     try:
-        engine = EpisodicMethod(work_dir=case_dir / "episodic", llm=llm)
+        engine = EpisodicMethod(work_dir=case_dir / "trace", llm=llm)
         for conv in case.get("conversations") or []:
             engine.ingest_conversation(conv)
 
@@ -333,20 +333,20 @@ def run_case(case: Dict[str, Any], *, llm: Any, work_dir: Path, qa_workers: int)
         f1 = content_f1(llm, facts=engine.list_facts(), gold_facts=dict(case.get("gold_facts") or {}))
         score = score_questions(answers)
         score["content_f1"] = f1.get("f1")
-        out["methods"]["episodic"] = {
-            "method": "episodic",
+        out["methods"]["trace"] = {
+            "method": "trace",
             "score": score,
             "answers": answers,
             "content_f1_detail": f1,
             "store": engine.store_snapshot(),
         }
     except Exception as exc:
-        out["methods"]["episodic"] = {"method": "episodic", "error": f"{type(exc).__name__}: {exc}"}
+        out["methods"]["trace"] = {"method": "trace", "error": f"{type(exc).__name__}: {exc}"}
     return out
 
 
 def summarize(results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    method = "episodic"
+    method = "trace"
     rows = [
         r
         for r in results
@@ -435,7 +435,7 @@ def selftest(cfg: dict) -> None:
             }
         )
         block = eng.retrieve("我最近在忙什么？")
-        print("[episodic 自测] retrieve:", repr(block)[:400])
+        print("[trace 自测] retrieve:", repr(block)[:400])
         assert "memory" in block or "秋招" in block or "招聘" in block
     print("自测通过 ✓")
 
@@ -471,7 +471,7 @@ def main() -> None:
         sys.exit("no cases loaded")
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    run_dir = Path(args.out) / f"qa_episodic_{stamp}"
+    run_dir = Path(args.out) / f"qa_aer_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     work_dir = run_dir / "work"
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -492,11 +492,11 @@ def main() -> None:
         with _WRITE_LOCK:
             with results_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        sc = ((row.get("methods") or {}).get("episodic") or {}).get("score") or {}
+        sc = ((row.get("methods") or {}).get("trace") or {}).get("score") or {}
         with _PRINT_LOCK:
             print(
                 f"  [{row.get('case_id')}] qa={sc.get('qa_accuracy')} "
-                f"f1={sc.get('content_f1')} err={((row.get('methods') or {}).get('episodic') or {}).get('error')}"
+                f"f1={sc.get('content_f1')} err={((row.get('methods') or {}).get('trace') or {}).get('error')}"
             )
         return row
 
@@ -515,7 +515,7 @@ def main() -> None:
 
     summary = {
         "created_at": stamp,
-        "method": "episodic",
+        "method": "trace",
         "n_cases": len(results),
         "data": str(args.data),
         "run_dir": str(run_dir),

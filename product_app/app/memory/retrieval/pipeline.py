@@ -1,4 +1,4 @@
-"""Retrieval pipeline: route → search → expand → merge → rerank → link → select."""
+"""Retrieval pipeline: route → search → stitch → merge → rerank → link → select."""
 from __future__ import annotations
 
 import logging
@@ -7,41 +7,41 @@ from typing import Any, List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import EpisodeWindow, ProfileItem, RetrievalTrace
+from product_app.app.memory.models import Span, ProfileItem, RetrievalTrace
 from product_app.app.memory.profile.service import ProfileService
 from product_app.app.memory.retrieval.direct import DirectRetriever
 from product_app.app.memory.retrieval.router import QueryRouter
 from product_app.app.memory.retrieval.split_query import SplitQueryRetriever
-from product_app.app.memory.store.expand import WindowExpander
+from product_app.app.memory.store.stitch import SpanStitcher
 from product_app.app.memory.store.lexical_search import LexicalSearcher
 from product_app.app.memory.store.link import link_windows
 from product_app.app.memory.store.merge import merge_windows
 from product_app.app.memory.store.rerank import WindowReranker
-from product_app.app.memory.store.repository import EpisodeStore
+from product_app.app.memory.store.repository import TraceStore
 from product_app.app.memory.store.select import select_windows
 from product_app.app.memory.store.semantic import SemanticSearcher
 
 logger = logging.getLogger(__name__)
 
 
-def _drop_excluded(windows: List[EpisodeWindow], exclude: Set[int]) -> List[EpisodeWindow]:
+def _drop_excluded(windows: List[Span], exclude: Set[int]) -> List[Span]:
     """Remove turns that are already in the live prompt; keep window if anything remains."""
     if not exclude:
         return windows
 
-    kept: List[EpisodeWindow] = []
+    kept: List[Span] = []
     for window in windows:
         turns = [t for t in window.messages if t.message_id not in exclude]
         if not turns:
             continue
-        seeds = [mid for mid in window.seed_ids if mid not in exclude]
-        if not seeds:
-            seeds = [t.message_id for t in turns if t.is_seed] or [turns[0].message_id]
+        focuses = [mid for mid in window.focus_ids if mid not in exclude]
+        if not focuses:
+            focuses = [t.message_id for t in turns if t.is_focus] or [turns[0].message_id]
         kept.append(
-            EpisodeWindow(
+            Span(
                 bundle_id=window.bundle_id,
                 conversation_id=window.conversation_id,
-                seed_ids=seeds,
+                focus_ids=focuses,
                 messages=turns,
                 fused_score=window.fused_score,
                 rerank_score=window.rerank_score,
@@ -54,7 +54,7 @@ def _drop_excluded(windows: List[EpisodeWindow], exclude: Set[int]) -> List[Epis
 
 
 class RetrievalPipeline:
-    def __init__(self, store: EpisodeStore, profile: ProfileService, llm: Any = None) -> None:
+    def __init__(self, store: TraceStore, profile: ProfileService, llm: Any = None) -> None:
         self._store = store
         self._profile = profile
         self._embedder = MemoryEmbedder.shared()
@@ -62,7 +62,7 @@ class RetrievalPipeline:
         lexical = LexicalSearcher(store)
         self._direct = DirectRetriever(semantic, lexical)
         self._split = SplitQueryRetriever(self._direct)
-        self._expander = WindowExpander(store, self._embedder)
+        self._stitcher = SpanStitcher(store, self._embedder)
         self._reranker = WindowReranker()
         self._router = QueryRouter(llm)
 
@@ -75,10 +75,10 @@ class RetrievalPipeline:
         user_id: int,
         query: str,
         exclude_message_ids: Optional[Set[int]] = None,
-    ) -> Tuple[List[EpisodeWindow], List[ProfileItem], RetrievalTrace]:
+    ) -> Tuple[List[Span], List[ProfileItem], RetrievalTrace]:
         started = time.time()
         trace = RetrievalTrace(
-            expansion_mode=str(mem_cfg.expand_mode),
+            stitch_mode=str(mem_cfg.stitch_mode),
             selection_mode=str(mem_cfg.evidence_selection_mode),
         )
         exclude = {int(x) for x in (exclude_message_ids or set())}
@@ -90,14 +90,14 @@ class RetrievalPipeline:
             trace.subquery_count = len(plan.queries)
 
             if plan.mode == "split" and len(plan.queries) > 1:
-                seeds, n_sem, n_lex = self._split.retrieve(
+                focuses, n_sem, n_lex = self._split.retrieve(
                     user_id=user_id,
                     queries=plan.queries,
                     exclude_message_ids=exclude,
                 )
             else:
                 q = plan.queries[0] if plan.queries else query
-                seeds, n_sem, n_lex = self._direct.retrieve(
+                focuses, n_sem, n_lex = self._direct.retrieve(
                     user_id=user_id,
                     query=q,
                     exclude_message_ids=exclude,
@@ -105,10 +105,10 @@ class RetrievalPipeline:
 
             trace.semantic_hits = n_sem
             trace.lexical_hits = n_lex
-            trace.seeds = len(seeds)
+            trace.focuses = len(focuses)
 
-            windows = self._expander.expand(
-                user_id=user_id, seeds=seeds, queries=plan.queries
+            windows = self._stitcher.stitch(
+                user_id=user_id, focuses=focuses, queries=plan.queries
             )
             windows = _drop_excluded(windows, exclude)
             windows = merge_windows(windows)

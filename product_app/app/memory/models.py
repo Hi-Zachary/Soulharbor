@@ -7,7 +7,7 @@ Role = Literal["user", "assistant"]
 
 
 @dataclass(frozen=True)
-class EpisodeMessage:
+class Turn:
     user_id: int
     conversation_id: int
     message_id: int
@@ -18,7 +18,7 @@ class EpisodeMessage:
 
 
 @dataclass
-class EpisodeChunk:
+class Block:
     id: int
     user_id: int
     conversation_id: int
@@ -48,22 +48,22 @@ class RankedHit:
 
 
 @dataclass
-class WindowTurn:
+class SpanTurn:
     message_id: int
     conversation_id: int
     role: str
     position: int
     content: str
     created_at: int
-    is_seed: bool = False
+    is_focus: bool = False
 
 
 @dataclass
-class EpisodeWindow:
+class Span:
     bundle_id: str
     conversation_id: int
-    seed_ids: List[int]
-    messages: List[WindowTurn]
+    focus_ids: List[int]
+    messages: List[SpanTurn]
     fused_score: float
     rerank_score: Optional[float] = None
     retrieval_queries: Optional[List[str]] = None
@@ -104,7 +104,7 @@ class RetrievalTrace:
     subquery_count: int = 1
     semantic_hits: int = 0
     lexical_hits: int = 0
-    seeds: int = 0
+    focuses: int = 0
     bundles: int = 0
     selected_bundles: int = 0
     profile_hits: int = 0
@@ -113,7 +113,7 @@ class RetrievalTrace:
     fallback: bool = False
     enough: bool = True
     queries: List[str] = field(default_factory=list)
-    expansion_mode: str = ""
+    stitch_mode: str = ""
     selection_mode: str = ""
     linked_chains: int = 0
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -124,7 +124,7 @@ class RetrievalTrace:
             "subquery_count": self.subquery_count,
             "semantic_hits": self.semantic_hits,
             "lexical_hits": self.lexical_hits,
-            "seeds": self.seeds,
+            "focuses": self.focuses,
             "bundles": self.bundles,
             "selected_bundles": self.selected_bundles,
             "profile_hits": self.profile_hits,
@@ -132,7 +132,7 @@ class RetrievalTrace:
             "latency_ms": self.latency_ms,
             "fallback": self.fallback,
             "enough": self.enough,
-            "expansion_mode": self.expansion_mode,
+            "stitch_mode": self.stitch_mode,
             "selection_mode": self.selection_mode,
             "linked_chains": self.linked_chains,
         }

@@ -1,4 +1,4 @@
-"""SQLite-backed episode chunk / embedding store."""
+"""SQLite-backed trace chunk / embedding store."""
 from __future__ import annotations
 
 import hashlib
@@ -9,10 +9,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Sequence
 
-from product_app.app.memory.models import EpisodeChunk
+from product_app.app.memory.models import Block
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS memory_episode_chunks (
+CREATE TABLE IF NOT EXISTS memory_blocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   conversation_id INTEGER NOT NULL,
@@ -26,21 +26,21 @@ CREATE TABLE IF NOT EXISTS memory_episode_chunks (
   is_deleted INTEGER NOT NULL DEFAULT 0,
   UNIQUE(message_id, chunk_index)
 );
-CREATE INDEX IF NOT EXISTS idx_ep_user_created
-  ON memory_episode_chunks(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ep_conv_pos
-  ON memory_episode_chunks(conversation_id, position);
-CREATE INDEX IF NOT EXISTS idx_ep_user_msg
-  ON memory_episode_chunks(user_id, message_id);
+CREATE INDEX IF NOT EXISTS idx_blocks_user_created
+  ON memory_blocks(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_blocks_conv_pos
+  ON memory_blocks(conversation_id, position);
+CREATE INDEX IF NOT EXISTS idx_blocks_user_msg
+  ON memory_blocks(user_id, message_id);
 
-CREATE TABLE IF NOT EXISTS memory_episode_embeddings (
+CREATE TABLE IF NOT EXISTS memory_block_embeddings (
   chunk_id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL,
   embedding_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL,
-  FOREIGN KEY(chunk_id) REFERENCES memory_episode_chunks(id) ON DELETE CASCADE
+  FOREIGN KEY(chunk_id) REFERENCES memory_blocks(id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_ep_emb_user ON memory_episode_embeddings(user_id);
+CREATE INDEX IF NOT EXISTS idx_block_emb_user ON memory_block_embeddings(user_id);
 
 CREATE TABLE IF NOT EXISTS memory_embed_retry (
   chunk_id INTEGER PRIMARY KEY,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS memory_embed_retry (
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
   updated_at INTEGER NOT NULL,
-  FOREIGN KEY(chunk_id) REFERENCES memory_episode_chunks(id) ON DELETE CASCADE
+  FOREIGN KEY(chunk_id) REFERENCES memory_blocks(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS support_profile_items (
@@ -79,10 +79,10 @@ CREATE TABLE IF NOT EXISTS support_profile_pending (
 CREATE INDEX IF NOT EXISTS idx_profile_pending_user
   ON support_profile_pending(user_id, created_at DESC);
 
--- MemMachine-like batch trigger cursor for profile LLM propose.
+-- Batch trigger cursor for profile LLM propose.
 CREATE TABLE IF NOT EXISTS support_profile_llm_state (
   user_id INTEGER PRIMARY KEY,
-  uningested_messages INTEGER NOT NULL DEFAULT 0,
+  pending_turns INTEGER NOT NULL DEFAULT 0,
   batch_started_at INTEGER NOT NULL DEFAULT 0,
   last_attempt_at INTEGER NOT NULL DEFAULT 0,
   last_attempt_message_id INTEGER NOT NULL DEFAULT 0
@@ -104,7 +104,7 @@ def content_hash(text: str) -> str:
     return hashlib.sha1((text or "").encode("utf-8")).hexdigest()
 
 
-def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_seed_at: int | None = None) -> List[Dict[str, Any]]:
+def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_focus_at: int | None = None) -> List[Dict[str, Any]]:
     """Collapse multi-chunk rows into one dict per message_id."""
     seen: set[int] = set()
     out: List[Dict[str, Any]] = []
@@ -120,13 +120,13 @@ def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_seed_at: int | None = 
             "content": str(row["content"]),
             "created_at": int(row["created_at"]),
         }
-        if mark_seed_at is not None:
-            item["is_seed"] = int(row["position"]) == int(mark_seed_at)
+        if mark_focus_at is not None:
+            item["is_focus"] = int(row["position"]) == int(mark_focus_at)
         out.append(item)
     return out
 
 
-class EpisodeStore:
+class TraceStore:
     def __init__(self, db_path: str | Path) -> None:
         self.path = Path(db_path)
 
@@ -143,7 +143,32 @@ class EpisodeStore:
 
     def init(self) -> None:
         with self._db() as conn:
+            self._migrate_legacy_names(conn)
             conn.executescript(_SCHEMA)
+
+    @staticmethod
+    def _migrate_legacy_names(conn: sqlite3.Connection) -> None:
+        """Rename pre-terminology-refresh tables/columns in place."""
+        tables = {
+            str(r[0])
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        if "memory_episode_chunks" in tables and "memory_blocks" not in tables:
+            conn.execute("ALTER TABLE memory_episode_chunks RENAME TO memory_blocks")
+        if "memory_episode_embeddings" in tables and "memory_block_embeddings" not in tables:
+            conn.execute(
+                "ALTER TABLE memory_episode_embeddings RENAME TO memory_block_embeddings"
+            )
+        if "support_profile_llm_state" in tables:
+            cols = {
+                str(r[1])
+                for r in conn.execute("PRAGMA table_info(support_profile_llm_state)").fetchall()
+            }
+            if "uningested_messages" in cols and "pending_turns" not in cols:
+                conn.execute(
+                    "ALTER TABLE support_profile_llm_state "
+                    "RENAME COLUMN uningested_messages TO pending_turns"
+                )
 
     # --- writes -------------------------------------------------------------
 
@@ -165,7 +190,7 @@ class EpisodeStore:
                 if not piece:
                     continue
                 conn.execute(
-                    "INSERT INTO memory_episode_chunks("
+                    "INSERT INTO memory_blocks("
                     "user_id, conversation_id, message_id, role, position, chunk_index, "
                     "content, content_hash, created_at, is_deleted"
                     ") VALUES(?,?,?,?,?,?,?,?,?,0) "
@@ -187,7 +212,7 @@ class EpisodeStore:
                     ),
                 )
                 row = conn.execute(
-                    "SELECT id FROM memory_episode_chunks WHERE message_id=? AND chunk_index=?",
+                    "SELECT id FROM memory_blocks WHERE message_id=? AND chunk_index=?",
                     (int(message_id), int(idx)),
                 ).fetchone()
                 if row:
@@ -197,7 +222,7 @@ class EpisodeStore:
     def save_embedding(self, chunk_id: int, user_id: int, embedding: List[float]) -> None:
         with self._db() as conn:
             conn.execute(
-                "INSERT INTO memory_episode_embeddings(chunk_id, user_id, embedding_json, updated_at) "
+                "INSERT INTO memory_block_embeddings(chunk_id, user_id, embedding_json, updated_at) "
                 "VALUES(?,?,?,?) "
                 "ON CONFLICT(chunk_id) DO UPDATE SET embedding_json=excluded.embedding_json, "
                 "updated_at=excluded.updated_at",
@@ -222,7 +247,7 @@ class EpisodeStore:
             rows = conn.execute(
                 "SELECT r.chunk_id, r.user_id, r.attempts, c.content "
                 "FROM memory_embed_retry r "
-                "JOIN memory_episode_chunks c ON c.id=r.chunk_id "
+                "JOIN memory_blocks c ON c.id=r.chunk_id "
                 "WHERE r.attempts < ? AND c.is_deleted=0 "
                 "ORDER BY r.updated_at ASC LIMIT ?",
                 (int(max_attempts), int(limit)),
@@ -237,11 +262,11 @@ class EpisodeStore:
                 for r in rows
             ]
 
-    def list_active_with_embeddings(self, user_id: int, limit: int = 5000) -> List[EpisodeChunk]:
+    def list_active_with_embeddings(self, user_id: int, limit: int = 5000) -> List[Block]:
         with self._db() as conn:
             rows = conn.execute(
-                "SELECT c.*, e.embedding_json FROM memory_episode_chunks c "
-                "LEFT JOIN memory_episode_embeddings e ON e.chunk_id=c.id "
+                "SELECT c.*, e.embedding_json FROM memory_blocks c "
+                "LEFT JOIN memory_block_embeddings e ON e.chunk_id=c.id "
                 "WHERE c.user_id=? AND c.is_deleted=0 "
                 "ORDER BY c.created_at DESC LIMIT ?",
                 (int(user_id), int(limit)),
@@ -255,8 +280,8 @@ class EpisodeStore:
                 "SELECT COUNT(*) AS n, "
                 "COALESCE(MAX(c.id), 0) AS max_id, "
                 "COALESCE(MAX(e.updated_at), 0) AS max_upd "
-                "FROM memory_episode_chunks c "
-                "JOIN memory_episode_embeddings e ON e.chunk_id=c.id "
+                "FROM memory_blocks c "
+                "JOIN memory_block_embeddings e ON e.chunk_id=c.id "
                 "WHERE c.user_id=? AND c.is_deleted=0",
                 (int(user_id),),
             ).fetchone()
@@ -265,19 +290,19 @@ class EpisodeStore:
     def message_already_indexed(self, message_id: int) -> bool:
         with self._db() as conn:
             row = conn.execute(
-                "SELECT 1 FROM memory_episode_chunks WHERE message_id=? AND is_deleted=0 LIMIT 1",
+                "SELECT 1 FROM memory_blocks WHERE message_id=? AND is_deleted=0 LIMIT 1",
                 (int(message_id),),
             ).fetchone()
             return row is not None
 
-    def get_chunks_by_ids(self, chunk_ids: Sequence[int]) -> List[EpisodeChunk]:
+    def get_chunks_by_ids(self, chunk_ids: Sequence[int]) -> List[Block]:
         ids = [int(x) for x in chunk_ids]
         if not ids:
             return []
         placeholders = ",".join("?" for _ in ids)
         with self._db() as conn:
             rows = conn.execute(
-                f"SELECT * FROM memory_episode_chunks WHERE id IN ({placeholders}) AND is_deleted=0",
+                f"SELECT * FROM memory_blocks WHERE id IN ({placeholders}) AND is_deleted=0",
                 ids,
             ).fetchall()
             return [self._to_chunk(r) for r in rows]
@@ -291,7 +316,7 @@ class EpisodeStore:
         with self._db() as conn:
             rows = conn.execute(
                 "SELECT message_id, role, position, content, created_at, chunk_index "
-                "FROM memory_episode_chunks "
+                "FROM memory_blocks "
                 "WHERE user_id=? AND conversation_id=? AND is_deleted=0 "
                 "ORDER BY position ASC, chunk_index ASC",
                 (int(user_id), int(conversation_id)),
@@ -303,7 +328,7 @@ class EpisodeStore:
         with self._db() as conn:
             rows = conn.execute(
                 "SELECT message_id, role, position, content, created_at, chunk_index "
-                "FROM memory_episode_chunks "
+                "FROM memory_blocks "
                 "WHERE user_id=? AND is_deleted=0 "
                 "ORDER BY created_at DESC, message_id DESC, chunk_index ASC "
                 "LIMIT ?",
@@ -325,7 +350,7 @@ class EpisodeStore:
     ) -> List[Dict[str, Any]]:
         with self._db() as conn:
             owned = conn.execute(
-                "SELECT 1 FROM memory_episode_chunks "
+                "SELECT 1 FROM memory_blocks "
                 "WHERE user_id=? AND conversation_id=? AND is_deleted=0 LIMIT 1",
                 (int(user_id), int(conversation_id)),
             ).fetchone()
@@ -335,13 +360,13 @@ class EpisodeStore:
             hi = int(position) + int(after)
             rows = conn.execute(
                 "SELECT message_id, role, position, content, created_at, chunk_index "
-                "FROM memory_episode_chunks "
+                "FROM memory_blocks "
                 "WHERE user_id=? AND conversation_id=? AND is_deleted=0 "
                 "AND position BETWEEN ? AND ? "
                 "ORDER BY position ASC, chunk_index ASC",
                 (int(user_id), int(conversation_id), lo, hi),
             ).fetchall()
-            return _unique_messages(rows, mark_seed_at=int(position))
+            return _unique_messages(rows, mark_focus_at=int(position))
 
     # --- deletes ------------------------------------------------------------
 
@@ -350,17 +375,17 @@ class EpisodeStore:
             ids = [
                 int(r["id"])
                 for r in conn.execute(
-                    "SELECT id FROM memory_episode_chunks WHERE user_id=? AND message_id=?",
+                    "SELECT id FROM memory_blocks WHERE user_id=? AND message_id=?",
                     (int(user_id), int(message_id)),
                 ).fetchall()
             ]
             cur = conn.execute(
-                "UPDATE memory_episode_chunks SET is_deleted=1 "
+                "UPDATE memory_blocks SET is_deleted=1 "
                 "WHERE user_id=? AND message_id=?",
                 (int(user_id), int(message_id)),
             )
             for cid in ids:
-                conn.execute("DELETE FROM memory_episode_embeddings WHERE chunk_id=?", (cid,))
+                conn.execute("DELETE FROM memory_block_embeddings WHERE chunk_id=?", (cid,))
                 conn.execute("DELETE FROM memory_embed_retry WHERE chunk_id=?", (cid,))
             self._drop_orphan_profiles(conn, user_id)
             return int(cur.rowcount or 0)
@@ -371,7 +396,7 @@ class EpisodeStore:
             return 0
         with self._db() as conn:
             rows = conn.execute(
-                "SELECT id FROM memory_episode_chunks "
+                "SELECT id FROM memory_blocks "
                 "WHERE user_id=? AND is_deleted=0 AND content LIKE ?",
                 (int(user_id), f"%{key}%"),
             ).fetchall()
@@ -379,10 +404,10 @@ class EpisodeStore:
             for row in rows:
                 cid = int(row["id"])
                 conn.execute(
-                    "UPDATE memory_episode_chunks SET is_deleted=1 WHERE id=?",
+                    "UPDATE memory_blocks SET is_deleted=1 WHERE id=?",
                     (cid,),
                 )
-                conn.execute("DELETE FROM memory_episode_embeddings WHERE chunk_id=?", (cid,))
+                conn.execute("DELETE FROM memory_block_embeddings WHERE chunk_id=?", (cid,))
                 conn.execute("DELETE FROM memory_embed_retry WHERE chunk_id=?", (cid,))
                 removed += 1
             self._drop_orphan_profiles(conn, user_id)
@@ -391,7 +416,7 @@ class EpisodeStore:
     def forget_user(self, user_id: int) -> int:
         with self._db() as conn:
             cur = conn.execute(
-                "UPDATE memory_episode_chunks SET is_deleted=1 WHERE user_id=?",
+                "UPDATE memory_blocks SET is_deleted=1 WHERE user_id=?",
                 (int(user_id),),
             )
             conn.execute("DELETE FROM support_profile_items WHERE user_id=?", (int(user_id),))
@@ -399,7 +424,7 @@ class EpisodeStore:
             conn.execute(
                 "DELETE FROM support_profile_llm_state WHERE user_id=?", (int(user_id),)
             )
-            conn.execute("DELETE FROM memory_episode_embeddings WHERE user_id=?", (int(user_id),))
+            conn.execute("DELETE FROM memory_block_embeddings WHERE user_id=?", (int(user_id),))
             conn.execute("DELETE FROM memory_embed_retry WHERE user_id=?", (int(user_id),))
             return int(cur.rowcount or 0)
 
@@ -420,7 +445,7 @@ class EpisodeStore:
             still_alive = 0
             for src in sources:
                 hit = conn.execute(
-                    "SELECT 1 FROM memory_episode_chunks "
+                    "SELECT 1 FROM memory_blocks "
                     "WHERE user_id=? AND message_id=? AND is_deleted=0 LIMIT 1",
                     (int(user_id), int(src["message_id"])),
                 ).fetchone()
@@ -437,7 +462,7 @@ class EpisodeStore:
     def count_active(self, user_id: int) -> int:
         with self._db() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) AS c FROM memory_episode_chunks "
+                "SELECT COUNT(*) AS c FROM memory_blocks "
                 "WHERE user_id=? AND is_deleted=0",
                 (int(user_id),),
             ).fetchone()
@@ -447,23 +472,23 @@ class EpisodeStore:
         with self._db() as conn:
             if user_id is None:
                 chunks = conn.execute(
-                    "SELECT COUNT(*) AS c FROM memory_episode_chunks WHERE is_deleted=0"
+                    "SELECT COUNT(*) AS c FROM memory_blocks WHERE is_deleted=0"
                 ).fetchone()["c"]
                 emb = conn.execute(
-                    "SELECT COUNT(*) AS c FROM memory_episode_embeddings e "
-                    "JOIN memory_episode_chunks c ON c.id=e.chunk_id WHERE c.is_deleted=0"
+                    "SELECT COUNT(*) AS c FROM memory_block_embeddings e "
+                    "JOIN memory_blocks c ON c.id=e.chunk_id WHERE c.is_deleted=0"
                 ).fetchone()["c"]
                 retry = conn.execute("SELECT COUNT(*) AS c FROM memory_embed_retry").fetchone()["c"]
             else:
                 uid = int(user_id)
                 chunks = conn.execute(
-                    "SELECT COUNT(*) AS c FROM memory_episode_chunks "
+                    "SELECT COUNT(*) AS c FROM memory_blocks "
                     "WHERE user_id=? AND is_deleted=0",
                     (uid,),
                 ).fetchone()["c"]
                 emb = conn.execute(
-                    "SELECT COUNT(*) AS c FROM memory_episode_embeddings e "
-                    "JOIN memory_episode_chunks c ON c.id=e.chunk_id "
+                    "SELECT COUNT(*) AS c FROM memory_block_embeddings e "
+                    "JOIN memory_blocks c ON c.id=e.chunk_id "
                     "WHERE c.user_id=? AND c.is_deleted=0",
                     (uid,),
                 ).fetchone()["c"]
@@ -490,7 +515,7 @@ class EpisodeStore:
             )
 
     @staticmethod
-    def _to_chunk(row: sqlite3.Row) -> EpisodeChunk:
+    def _to_chunk(row: sqlite3.Row) -> Block:
         emb = None
         raw = row["embedding_json"] if "embedding_json" in row.keys() else None
         if raw:
@@ -498,7 +523,7 @@ class EpisodeStore:
                 emb = [float(x) for x in json.loads(raw)]
             except Exception:
                 emb = None
-        return EpisodeChunk(
+        return Block(
             id=int(row["id"]),
             user_id=int(row["user_id"]),
             conversation_id=int(row["conversation_id"]),

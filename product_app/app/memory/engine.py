@@ -11,22 +11,22 @@ from product_app.app.memory.commands.remember import handle_remember
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.context.builder import build_memory_block
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import EpisodeMessage, RetrievalTrace
+from product_app.app.memory.models import Turn, RetrievalTrace
 from product_app.app.memory.profile.service import ProfileService
 from product_app.app.memory.retrieval.pipeline import RetrievalPipeline
 from product_app.app.memory.retrieval.sufficiency import is_enough
-from product_app.app.memory.store.ingest import EpisodeIngestor
-from product_app.app.memory.store.repository import EpisodeStore
+from product_app.app.memory.store.ingest import TraceIngestor
+from product_app.app.memory.store.repository import TraceStore
 
 logger = logging.getLogger(__name__)
 
 
 class MemoryEngine:
     def __init__(self, db_path: str | Path, llm: Any = None) -> None:
-        self._store = EpisodeStore(db_path)
+        self._store = TraceStore(db_path)
         self._store.init()
         self._embedder = MemoryEmbedder.shared()
-        self._ingestor = EpisodeIngestor(self._store, self._embedder)
+        self._ingestor = TraceIngestor(self._store, self._embedder)
         self._profile = ProfileService(db_path)
         self._pipeline = RetrievalPipeline(self._store, self._profile, llm=llm)
         self._llm = llm
@@ -57,7 +57,7 @@ class MemoryEngine:
             return 0
         try:
             written = self._ingestor.ingest_message(
-                EpisodeMessage(
+                Turn(
                     user_id=int(user_id),
                     conversation_id=int(conversation_id),
                     message_id=int(message_id),
@@ -74,7 +74,7 @@ class MemoryEngine:
                     source_message_id=int(message_id),
                 )
             if mem_cfg.profile_enabled and role in ("user", "assistant"):
-                # MemMachine-like: count toward batch trigger on every turn.
+                # Count toward batch trigger on every turn.
                 if mem_cfg.profile_llm_propose:
                     self._profile.note_message_for_llm_propose(int(user_id))
             if mem_cfg.profile_enabled and role == "assistant":

@@ -7,10 +7,10 @@ import time
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import EpisodeWindow, ProfileItem, WindowTurn
+from product_app.app.memory.models import Span, ProfileItem, SpanTurn
 from product_app.app.memory.store.text_sim import cosine, jaccard, tokens
 
-# Prefer MemMachine-style full text. Only snip extreme long messages.
+# Prefer full text. Only snip extreme long messages.
 # Global <memory> token budget still drops whole lines when needed.
 _SNIP_DEFAULT = 800
 _SNIP_SEED = 1000
@@ -30,10 +30,10 @@ def _date_label(ts: int) -> str:
         return ""
 
 
-def _relevance(turn: WindowTurn, query: str) -> float:
+def _relevance(turn: SpanTurn, query: str) -> float:
     q_tokens = tokens(query)
     overlap = jaccard(tokens(turn.content), q_tokens) if q_tokens else 0.0
-    bonus = 0.25 if turn.is_seed else 0.0
+    bonus = 0.25 if turn.is_focus else 0.0
     return overlap * 2.0 + bonus
 
 
@@ -180,11 +180,11 @@ def _snip_for_query(
 
 
 def _pick_user_turns(
-    window: EpisodeWindow,
+    window: Span,
     *,
     query: str = "",
     max_msgs: int = 6,
-) -> List[WindowTurn]:
+) -> List[SpanTurn]:
     """Keep user lines only; prefer query-relevant facts when the budget is tight."""
     users = [t for t in window.messages if t.role == "user"]
     if not users:
@@ -195,18 +195,18 @@ def _pick_user_turns(
 
     ranked = sorted(
         users,
-        key=lambda t: (-_relevance(t, query), 0 if t.is_seed else 1, t.position),
+        key=lambda t: (-_relevance(t, query), 0 if t.is_focus else 1, t.position),
     )
     chosen = ranked[:limit]
     return sorted(chosen, key=lambda t: t.position)
 
 
-def _budget_for(turn: WindowTurn) -> int:
-    return _SNIP_SEED if turn.is_seed else _SNIP_DEFAULT
+def _budget_for(turn: SpanTurn) -> int:
+    return _SNIP_SEED if turn.is_focus else _SNIP_DEFAULT
 
 
 def _lines_for_window(
-    window: EpisodeWindow,
+    window: Span,
     *,
     query: str = "",
     max_msgs: int = 6,
@@ -236,7 +236,7 @@ def _lines_for_window(
                 query_vec=query_vec,
             )
         day = _date_label(turn.created_at)
-        star = "★ " if turn.is_seed else ""
+        star = "★ " if turn.is_focus else ""
         when = f"{day}：" if day else ""
         lines.append(f"- {star}{when}用户曾说：{text}")
         lines.append(
@@ -246,14 +246,14 @@ def _lines_for_window(
     return lines
 
 
-def _earliest_ts(window: EpisodeWindow) -> int:
+def _earliest_ts(window: Span) -> int:
     if not window.messages:
         return 0
     return min(t.created_at for t in window.messages)
 
 
 def _prepare_snip_batch(
-    windows: Sequence[EpisodeWindow],
+    windows: Sequence[Span],
     *,
     query: str,
     embedder: MemoryEmbedder,
@@ -294,7 +294,7 @@ def _prepare_snip_batch(
 
 def format_sections(
     *,
-    bundles: List[EpisodeWindow],
+    bundles: List[Span],
     profiles: List[ProfileItem],
     query: str = "",
     embedder: Optional[MemoryEmbedder] = None,

@@ -1,4 +1,4 @@
-"""Consent-based profile side channel on top of the episode store."""
+"""Consent-based profile side channel on top of the trace store."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -163,7 +163,7 @@ class ProfileService:
     ) -> Optional[str]:
         """LLM extracts support-preference candidates → pending only (never active).
 
-        By default runs only when MemMachine-like batch triggers fire (message count
+        By default runs only when batch triggers fire (message count
         or age). Pass force=True to bypass the batch gate (tests).
         """
         from product_app.app.memory.config import mem_cfg
@@ -195,7 +195,7 @@ class ProfileService:
             existing=existing,
             max_items=max_items,
         )
-        # Mark attempted whether or not anything was added (like MemMachine ingest mark).
+        # Mark attempted whether or not anything was added.
         self._db.mark_llm_propose_attempted(user_id, source_message_id)
         if not proposals:
             return None
@@ -221,7 +221,7 @@ class ProfileService:
 
     def note_message_for_llm_propose(self, user_id: int) -> None:
         """Accumulate toward the next batch trigger (call on each ingested turn)."""
-        self._db.bump_llm_uningested(user_id)
+        self._db.bump_llm_pending(user_id)
 
     def _create(
         self,

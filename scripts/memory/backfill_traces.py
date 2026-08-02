@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill episode index from messages table. No LLM. Idempotent + checkpointed."""
+"""Backfill trace index from messages table. No LLM. Idempotent + checkpointed."""
 from __future__ import annotations
 
 import argparse

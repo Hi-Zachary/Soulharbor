@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from product_app.app.memory.models import EpisodeWindow, ProfileItem
+from product_app.app.memory.models import Span, ProfileItem
 
 
 def is_enough(
-    windows: List[EpisodeWindow],
+    windows: List[Span],
     profiles: Optional[List[ProfileItem]] = None,
     *,
     min_items: int = 1,

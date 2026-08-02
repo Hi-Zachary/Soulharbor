@@ -236,7 +236,7 @@ class MemoryService:
             "memories": prefs,
             "preferences": prefs,
             "conversations": [],
-            "episode_chunks": detail.get("episode_chunks") or 0,
+            "trace_blocks": detail.get("trace_blocks") or 0,
             "embeddings": detail.get("embeddings") or 0,
             "backend": detail.get("backend") or "aer",
         }

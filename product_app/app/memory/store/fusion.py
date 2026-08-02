@@ -21,8 +21,8 @@ def rrf_fuse(
     *,
     limit: int | None = None,
 ) -> List[RankedHit]:
-    """Merge two ranked lists; higher fused_score means better seed."""
-    top_n = int(limit or mem_cfg.seed_top_k)
+    """Merge two ranked lists; higher fused_score means better focus."""
+    top_n = int(limit or mem_cfg.focus_top_k)
     by_chunk: Dict[int, RankedHit] = {hit.chunk_id: hit for hit in semantic_hits}
 
     for hit in lexical_hits:

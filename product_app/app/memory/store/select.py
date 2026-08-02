@@ -4,11 +4,11 @@ from __future__ import annotations
 from typing import List, Set
 
 from product_app.app.memory.config import mem_cfg
-from product_app.app.memory.models import EpisodeWindow
+from product_app.app.memory.models import Span
 from product_app.app.memory.store.text_sim import entities, jaccard, tokens
 
 
-def _relevance(query: str, window: EpisodeWindow) -> float:
+def _relevance(query: str, window: Span) -> float:
     q = tokens(query)
     text = "\n".join(t.content for t in window.messages)
     overlap = jaccard(q, tokens(text))
@@ -17,14 +17,14 @@ def _relevance(query: str, window: EpisodeWindow) -> float:
     return fused * 2.0 + rerank * 0.5 + overlap * 1.5
 
 
-def _week_bucket(window: EpisodeWindow, *, seconds: int = 7 * 86400) -> int:
+def _week_bucket(window: Span, *, seconds: int = 7 * 86400) -> int:
     if not window.messages:
         return 0
     earliest = min(t.created_at for t in window.messages)
     return int(earliest) // int(seconds)
 
 
-def _content_tokens(window: EpisodeWindow) -> Set[str]:
+def _content_tokens(window: Span) -> Set[str]:
     text = "\n".join(t.content for t in window.messages)
     return tokens(text) | entities(text)
 
@@ -32,9 +32,9 @@ def _content_tokens(window: EpisodeWindow) -> Set[str]:
 def select_windows(
     *,
     query: str,
-    bundles: List[EpisodeWindow],
+    bundles: List[Span],
     limit: int | None = None,
-) -> List[EpisodeWindow]:
+) -> List[Span]:
     """
     Default mode (`coverage`): greedy pick for relevance + new info − redundancy.
     `topk` mode: just take the first N windows (already ranked upstream).
@@ -47,7 +47,7 @@ def select_windows(
         return bundles[:limit]
 
     remaining = list(bundles)
-    chosen: List[EpisodeWindow] = []
+    chosen: List[Span] = []
     covered: Set[str] = set()
     seen_weeks: Set[int] = set()
     query_tokens = tokens(query)

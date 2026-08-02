@@ -1,4 +1,4 @@
-"""Dense retrieval over stored episode chunks."""
+"""Dense retrieval over stored trace chunks."""
 from __future__ import annotations
 
 import logging
@@ -6,15 +6,15 @@ from typing import List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder, cosine_similarity
-from product_app.app.memory.models import EpisodeChunk, RankedHit
+from product_app.app.memory.models import Block, RankedHit
 from product_app.app.memory.store.ann_index import ann_cache
-from product_app.app.memory.store.repository import EpisodeStore
+from product_app.app.memory.store.repository import TraceStore
 
 logger = logging.getLogger(__name__)
 
 
 class SemanticSearcher:
-    def __init__(self, store: EpisodeStore, embedder: Optional[MemoryEmbedder] = None) -> None:
+    def __init__(self, store: TraceStore, embedder: Optional[MemoryEmbedder] = None) -> None:
         self._store = store
         self._embedder = embedder or MemoryEmbedder.shared()
 
@@ -132,7 +132,7 @@ class SemanticSearcher:
         return hits
 
     @staticmethod
-    def _to_hit(row: EpisodeChunk) -> RankedHit:
+    def _to_hit(row: Block) -> RankedHit:
         return RankedHit(
             chunk_id=row.id,
             user_id=row.user_id,

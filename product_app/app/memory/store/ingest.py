@@ -1,4 +1,4 @@
-"""Write chat turns into the episode store and keep embeddings warm."""
+"""Write chat turns into the trace store and keep embeddings warm."""
 from __future__ import annotations
 
 import logging
@@ -6,19 +6,19 @@ from typing import Optional
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import EpisodeMessage
+from product_app.app.memory.models import Turn
 from product_app.app.memory.store.chunker import chunk_text
-from product_app.app.memory.store.repository import EpisodeStore
+from product_app.app.memory.store.repository import TraceStore
 
 logger = logging.getLogger(__name__)
 
 
-class EpisodeIngestor:
-    def __init__(self, store: EpisodeStore, embedder: Optional[MemoryEmbedder] = None) -> None:
+class TraceIngestor:
+    def __init__(self, store: TraceStore, embedder: Optional[MemoryEmbedder] = None) -> None:
         self._store = store
         self._embedder = embedder or MemoryEmbedder.shared()
 
-    def ingest_message(self, message: EpisodeMessage) -> int:
+    def ingest_message(self, message: Turn) -> int:
         body = (message.content or "").strip()
         if not body or message.role not in ("user", "assistant"):
             return 0

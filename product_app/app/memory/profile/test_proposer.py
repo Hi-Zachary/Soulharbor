@@ -13,7 +13,7 @@ from product_app.app.memory.profile.proposer import (
     roughly_same,
 )
 from product_app.app.memory.profile.service import ProfileService
-from product_app.app.memory.store.repository import EpisodeStore
+from product_app.app.memory.store.repository import TraceStore
 
 
 class StubLLM:
@@ -52,7 +52,7 @@ class ProfileProposerTests(unittest.TestCase):
     def test_llm_propose_to_pending_then_confirm(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
-            EpisodeStore(db).init()
+            TraceStore(db).init()
             svc = ProfileService(db)
             llm = StubLLM(
                 {
@@ -96,7 +96,7 @@ class ProfileProposerTests(unittest.TestCase):
     def test_empty_when_model_returns_nothing(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
-            EpisodeStore(db).init()
+            TraceStore(db).init()
             svc = ProfileService(db)
             llm = StubLLM({"proposals": []})
             with patch("product_app.app.memory.config.mem_cfg") as cfg:
@@ -121,7 +121,7 @@ class ProfileProposerTests(unittest.TestCase):
     def test_skip_if_pending_already(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
-            EpisodeStore(db).init()
+            TraceStore(db).init()
             svc = ProfileService(db)
             svc.propose(
                 user_id=1,
@@ -163,7 +163,7 @@ class ProfileProposerTests(unittest.TestCase):
     def test_batch_trigger_after_n_messages(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
-            EpisodeStore(db).init()
+            TraceStore(db).init()
             svc = ProfileService(db)
             llm = StubLLM(
                 {

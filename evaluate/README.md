@@ -14,7 +14,7 @@ evaluate/
 └── memory/                # 长期记忆 QA 评测（AER vs Mem0）
     ├── data/              # all_30.jsonl（完整 30 条）
     ├── runs/              # 正式结果：qa_episodic_* / qa_mem0_*
-    └── episodic_eval/     # 评测协议脚本
+    └── aer_eval/     # 评测协议脚本
 ```
 
 ## 主对话 — `dialogue/`
@@ -25,7 +25,7 @@ evaluate/
 ## 长期记忆 — `memory/`
 
 - **数据**：`memory/data/all_30.jsonl`（30 条）
-- **协议**：`episodic_eval/run_qa_episodic.py`（AER）与 `run_qa_mem0.py`（Mem0，同协议对照）
+- **协议**：`aer_eval/run_qa_aer.py`（AER）与 `run_qa_mem0.py`（Mem0，同协议对照）
 - **结果**：`memory/runs/`（`summary.json` + `results.jsonl`）
   - AER：`qa_episodic_20260731_145921`（QA ≈91%，content F1 ≈0.89）；另有 `qa_episodic_20260731_134643`（QA ≈93%，content F1 ≈0.79）
   - Mem0：`qa_mem0_20260731_135743`（QA ≈64%，content F1 ≈0.48）

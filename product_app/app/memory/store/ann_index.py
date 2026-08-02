@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from product_app.app.memory.models import EpisodeChunk
+from product_app.app.memory.models import Block
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ _Fingerprint = Tuple[int, int, int]  # count, max_chunk_id, max_updated_at
 class _UserIndex:
     fingerprint: _Fingerprint
     index: object  # faiss.Index
-    rows: List[EpisodeChunk]
+    rows: List[Block]
 
 
 class UserAnnCache:
@@ -59,8 +59,8 @@ class UserAnnCache:
             return None
 
     @staticmethod
-    def _matrix(rows: Sequence[EpisodeChunk]) -> Tuple[np.ndarray, List[EpisodeChunk]]:
-        kept: List[EpisodeChunk] = []
+    def _matrix(rows: Sequence[Block]) -> Tuple[np.ndarray, List[Block]]:
+        kept: List[Block] = []
         vectors: List[List[float]] = []
         dim = 0
         for row in rows:
@@ -82,7 +82,7 @@ class UserAnnCache:
         mat = mat / norms
         return mat, kept
 
-    def _build(self, fingerprint: _Fingerprint, rows: Sequence[EpisodeChunk]) -> Optional[_UserIndex]:
+    def _build(self, fingerprint: _Fingerprint, rows: Sequence[Block]) -> Optional[_UserIndex]:
         faiss = self._ensure_faiss()
         if faiss is None:
             return None
@@ -101,7 +101,7 @@ class UserAnnCache:
         self,
         user_id: int,
         fingerprint: _Fingerprint,
-        rows: Sequence[EpisodeChunk],
+        rows: Sequence[Block],
     ) -> Optional[_UserIndex]:
         uid = int(user_id)
         with self._lock:
@@ -120,7 +120,7 @@ class UserAnnCache:
         query_vec: Sequence[float],
         *,
         top_k: int,
-    ) -> List[Tuple[float, EpisodeChunk]]:
+    ) -> List[Tuple[float, Block]]:
         if user_index.index is None or not user_index.rows or top_k <= 0:
             return []
         q = np.asarray(list(query_vec), dtype=np.float32).reshape(1, -1)
@@ -130,7 +130,7 @@ class UserAnnCache:
         q = q / norm
         k = min(int(top_k), len(user_index.rows))
         scores, indices = user_index.index.search(q, k)
-        out: List[Tuple[float, EpisodeChunk]] = []
+        out: List[Tuple[float, Block]] = []
         for score, idx in zip(scores[0].tolist(), indices[0].tolist()):
             if idx < 0 or idx >= len(user_index.rows):
                 continue
