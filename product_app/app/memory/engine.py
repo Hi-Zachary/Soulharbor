@@ -31,10 +31,26 @@ class MemoryEngine:
         self._pipeline = RetrievalPipeline(self._store, self._profile, llm=llm)
         self._llm = llm
         self._last_trace: Optional[RetrievalTrace] = None
+        self._cmd_cache_text: str = ""
+        self._cmd_cache: Dict[str, str] = {"action": "none"}
 
     def set_llm(self, llm: Any) -> None:
         self._llm = llm
         self._pipeline.set_llm(llm)
+
+    def _parse_profile_command(self, user_text: str) -> Dict[str, str]:
+        """Parse once per user utterance (shared by build_context + ingest)."""
+        text = (user_text or "").strip()
+        if not text or self._llm is None:
+            return {"action": "none"}
+        if text == self._cmd_cache_text:
+            return dict(self._cmd_cache)
+        from product_app.app.memory.profile.commands_llm import parse_user_command
+
+        cmd = parse_user_command(self._llm, user_text=text)
+        self._cmd_cache_text = text
+        self._cmd_cache = dict(cmd)
+        return dict(cmd)
 
     @property
     def last_trace(self) -> Optional[RetrievalTrace]:
@@ -67,35 +83,34 @@ class MemoryEngine:
                     created_at=int(created_at),
                 )
             )
-            if mem_cfg.profile_enabled and role == "user":
-                self._profile.maybe_handle_user_command(
-                    user_id=int(user_id),
-                    user_text=content,
-                    source_message_id=int(message_id),
-                )
+            if mem_cfg.profile_enabled and role == "user" and self._llm is not None:
+                try:
+                    cmd = self._parse_profile_command(content)
+                    self._profile.maybe_handle_user_command(
+                        user_id=int(user_id),
+                        user_text=content,
+                        source_message_id=int(message_id),
+                        llm=self._llm,
+                        parsed=cmd,
+                    )
+                except Exception:
+                    logger.warning("profile command parse failed", exc_info=True)
             if mem_cfg.profile_enabled and role in ("user", "assistant"):
-                # Count toward batch trigger on every turn.
                 if mem_cfg.profile_llm_propose:
                     self._profile.note_message_for_llm_propose(int(user_id))
             if mem_cfg.profile_enabled and role == "assistant":
-                # Weak regex offer (legacy).
-                self._profile.maybe_capture_assistant_proposal(
-                    user_id=int(user_id),
-                    assistant_text=content,
-                    source_message_id=int(message_id),
-                )
-                # Batch-gated Chinese LLM propose → pending (consent still required).
+                # Batch-gated LLM extract → active (allowlisted long-term facts only).
                 if mem_cfg.profile_llm_propose and self._llm is not None:
                     try:
                         recent = self._store.list_recent_messages(int(user_id), limit=8)
-                        self._profile.maybe_llm_propose(
+                        self._profile.maybe_llm_extract(
                             user_id=int(user_id),
                             llm=self._llm,
                             recent_turns=recent,
                             source_message_id=int(message_id),
                         )
                     except Exception:
-                        logger.warning("profile LLM propose failed", exc_info=True)
+                        logger.warning("profile LLM extract failed", exc_info=True)
             try:
                 self._ingestor.process_embed_retries(limit=10)
             except Exception:
@@ -130,8 +145,12 @@ class MemoryEngine:
             if not query:
                 return ""
 
-            if self._profile.detector.detect_inspect(query):
-                return self._inspect_block(user_id)
+            if mem_cfg.profile_enabled and self._llm is not None:
+                try:
+                    if self._parse_profile_command(query).get("action") == "inspect":
+                        return self._inspect_block(user_id)
+                except Exception:
+                    logger.warning("profile inspect parse failed", exc_info=True)
 
             windows, profiles, trace = self._pipeline.run(
                 user_id=user_id,
@@ -182,11 +201,11 @@ class MemoryEngine:
     def _inspect_block(self, user_id: int) -> str:
         info = handle_inspect(repo=self._store, profile=self._profile, user_id=user_id)
         prefs = info.get("support_preferences") or []
-        lines = ["[已确认的支持偏好]"]
+        lines = ["[长期画像]"]
         if prefs:
             lines.extend(f"- {p.get('content')}" for p in prefs)
         else:
-            lines.append("- （暂无经确认的支持偏好）")
+            lines.append("- （暂无长期画像条目）")
         return "<memory>\n" + "\n".join(lines) + "\n</memory>"
 
     # --- profile helpers ----------------------------------------------------

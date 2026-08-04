@@ -49,4 +49,4 @@ class SplitQueryRetriever:
                         existing.lexical_rank = hit.lexical_rank
 
         ranked = sorted(merged.values(), key=lambda h: h.fused_score, reverse=True)
-        return ranked[: int(mem_cfg.anchor_top_k)], dense_total, sparse_total
+        return ranked[: int(mem_cfg.fuse_top_k())], dense_total, sparse_total

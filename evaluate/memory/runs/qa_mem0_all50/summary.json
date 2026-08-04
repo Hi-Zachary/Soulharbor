@@ -1,0 +1,40 @@
+{
+  "created_at": "merged_all50",
+  "method": "mem0",
+  "n_cases": 50,
+  "data": "all_50.jsonl",
+  "methods": {
+    "mem0": {
+      "n": 50,
+      "qa_accuracy": 0.6866666666666668,
+      "qa_micro": 0.712,
+      "correct": 178,
+      "total": 250,
+      "overgeneralization_rate": null,
+      "staleness_rate": 0.46551724137931033,
+      "content_f1": 0.4004460005130723,
+      "subclass_qa": {
+        "context_recall": 0.4666666666666666,
+        "cross_session_integration": 0.5999999999999999,
+        "current_state": 0.6,
+        "detail_recall": 0.8666666666666666,
+        "hard_mixed": 0.75,
+        "preference_recall": 0.7333333333333333,
+        "temporal_sequence": 0.5999999999999999
+      },
+      "probe_qa": {
+        "context": 0.4782608695652174,
+        "cross_session": 0.75,
+        "current": 0.5714285714285714,
+        "current_state": 0.5227272727272727,
+        "integration": 0.6,
+        "preference": 0.8666666666666667,
+        "recall": 0.9310344827586207,
+        "temporal": 0.4230769230769231
+      }
+    }
+  },
+  "run_dir": "/root/autodl-tmp/SoulHarbor/evaluate/memory/runs/qa_mem0_all50",
+  "note": "Official all_50 evaluation result.",
+  "sources_archived": "archive/memory_pre_final_coverage_ce_20260804/eval_runs_split_sources/"
+}

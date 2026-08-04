@@ -331,7 +331,7 @@ def format_sections(
             parts.append("")
 
     if profiles:
-        parts.append("[支持偏好]")
+        parts.append("[长期画像]")
         for item in profiles:
             parts.append(f"- {item.content}")
             if item.source_message_ids:

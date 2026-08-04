@@ -43,8 +43,18 @@ class Settings:
     memory_encoder_base: str = _abs(
         os.environ.get("SOULHARBOR_MEMORY_ENCODER_BASE", "models/encoders/bge-m3")
     )
+    memory_reranker_base: str = _abs(
+        os.environ.get(
+            "SOULHARBOR_MEMORY_RERANKER_BASE",
+            "models/encoders/bge-reranker-v2-m3",
+        )
+    )
     # Default cuda; on small GPUs set SOULHARBOR_MEMORY_EMBED_DEVICE=cpu etc.
     memory_embed_device: str = os.environ.get("SOULHARBOR_MEMORY_EMBED_DEVICE", "cuda")
+    memory_rerank_device: str = os.environ.get(
+        "SOULHARBOR_MEMORY_RERANK_DEVICE",
+        os.environ.get("SOULHARBOR_MEMORY_EMBED_DEVICE", "cuda"),
+    )
     classifier_device: str = os.environ.get("SOULHARBOR_CLASSIFIER_DEVICE", "cuda")
     memory_embed_max_length: int = int(os.environ.get("SOULHARBOR_MEMORY_EMBED_MAXLEN", "512"))
     max_length: int = int(os.environ.get("SOULHARBOR_CLS_MAXLEN", "512"))

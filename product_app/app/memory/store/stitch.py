@@ -179,7 +179,13 @@ class SpanStitcher:
         for w in windows:
             w.retrieval_queries = list(queries or [])
         windows.sort(key=lambda w: w.fused_score, reverse=True)
-        keep = max(int(mem_cfg.bundle_top_k) * 2, int(mem_cfg.anchor_top_k))
+        # Keep all CE-selected anchors through stitch; MMR truncates later.
+        keep = max(
+            int(mem_cfg.bundle_top_k) * 2,
+            int(mem_cfg.anchor_top_k),
+            int(mem_cfg.anchor_ce_top_k),
+            len(windows),
+        )
         return windows[:keep]
 
     # --- fixed neighbor windows ---------------------------------------------

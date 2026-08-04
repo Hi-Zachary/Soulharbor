@@ -3,7 +3,7 @@
 Modules under this package implement **ER** (Experience Rebuild):
 
 - `store/` — Trace archive: save raw turns as Blocks, search, Stitch spans, link sessions, select evidence
-- `profile/` — user-confirmed preferences (consent)
+- `profile/` — strict LLM long-term user facts (allowlisted; no keyword gates)
 - `retrieval/` — end-to-end recall pipeline
 - `context/` — format the `<memory>` block for the chat model
 

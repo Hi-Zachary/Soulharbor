@@ -76,7 +76,7 @@ class ProfileItem:
     id: str
     user_id: int
     content: str
-    origin: str  # explicit | confirmed
+    origin: str  # extracted | explicit
     source_message_ids: List[int]
     status: str  # active | deleted
     created_at: int

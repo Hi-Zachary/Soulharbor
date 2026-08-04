@@ -1,17 +1,16 @@
-"""Unit tests for LLM profile proposer + consent (no network)."""
+"""Unit tests for strict profile LLM extract (no network, no keyword gates)."""
 from __future__ import annotations
 
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-from product_app.app.memory.profile.proposer import (
-    _parse,
+from product_app.app.memory.profile.extractor import (
+    _parse_commands,
     evidence_supported,
-    roughly_same,
 )
+from product_app.app.memory.profile.schema import normalize_fact
 from product_app.app.memory.profile.service import ProfileService
 from product_app.app.memory.store.repository import TraceStore
 
@@ -26,139 +25,134 @@ class StubLLM:
         return json.dumps(self.payload, ensure_ascii=False)
 
 
-class ProfileProposerTests(unittest.TestCase):
-    def test_parse_max_one(self):
-        raw = (
-            '{"proposals":['
-            '{"content":"希望先被倾听","evidence":"希望先被倾听"},'
-            '{"content":"第二条","evidence":"y"}'
-            "]}"
+class ProfileExtractTests(unittest.TestCase):
+    def test_parse_filters_non_allowlisted(self):
+        raw = json.dumps(
+            {
+                "commands": [
+                    {
+                        "command": "add",
+                        "tag": "identity",
+                        "feature": "name",
+                        "value": "小王",
+                        "evidence": "我叫小王",
+                    },
+                    {
+                        "command": "add",
+                        "tag": "diagnosis",
+                        "feature": "label",
+                        "value": "抑郁症",
+                        "evidence": "抑郁症",
+                    },
+                ]
+            },
+            ensure_ascii=False,
         )
-        items = _parse(raw, max_items=1)
-        self.assertEqual(len(items), 1)
+        cmds = _parse_commands(raw, max_items=5)
+        self.assertEqual(len(cmds), 1)
+        self.assertEqual(cmds[0]["feature"], "name")
 
     def test_evidence_supported(self):
-        prop = {
-            "content": "希望先被倾听",
-            "evidence": "希望你先听我说",
+        cmd = {
+            "command": "add",
+            "tag": "identity",
+            "feature": "name",
+            "value": "小王",
+            "evidence": "我叫小王",
         }
-        self.assertTrue(evidence_supported(prop, ["今天好累，希望你先听我说"]))
-        self.assertFalse(evidence_supported(prop, ["今天食堂什么菜"]))
+        self.assertTrue(evidence_supported(cmd, ["你好，我叫小王"]))
+        self.assertFalse(evidence_supported(cmd, ["今天食堂什么菜"]))
 
-    def test_roughly_same(self):
-        self.assertTrue(roughly_same("希望先被倾听", "希望先被倾听一下"))
-        self.assertFalse(roughly_same("希望先被倾听", "喜欢跑步"))
+    def test_normalize_fact_reject_unknown(self):
+        self.assertIsNone(
+            normalize_fact(tag="psychology", feature="trait", value="高焦虑")
+        )
+        self.assertIsNotNone(
+            normalize_fact(tag="identity", feature="name", value="小王")
+        )
 
-    def test_llm_propose_to_pending_then_confirm(self):
+    def test_llm_extract_writes_active_directly(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
             TraceStore(db).init()
             svc = ProfileService(db)
             llm = StubLLM(
                 {
-                    "proposals": [
+                    "commands": [
                         {
-                            "content": "希望情绪强烈时先被倾听",
-                            "evidence": "希望情绪强烈时先被倾听",
+                            "command": "add",
+                            "tag": "identity",
+                            "feature": "name",
+                            "value": "小王",
+                            "evidence": "我叫小王",
                         },
                         {
-                            "content": "诊断为抑郁症患者",
-                            "evidence": "抑郁症",
+                            "command": "add",
+                            "tag": "identity",
+                            "feature": "mood",
+                            "value": "今天很难过",
+                            "evidence": "很难过",
                         },
                     ]
                 }
             )
-            with patch("product_app.app.memory.config.mem_cfg") as cfg:
-                cfg.profile_llm_propose_max = 1
-                cfg.profile_llm_skip_if_pending = True
-                cfg.profile_llm_trigger_messages = 5
-                cfg.profile_llm_trigger_age_sec = 300
-                out = svc.maybe_llm_propose(
-                    user_id=1,
-                    llm=llm,
-                    recent_turns=[
-                        {"role": "user", "content": "我希望情绪强烈时先被倾听"},
-                        {"role": "assistant", "content": "好的，我记下了这个偏好候选。"},
-                    ],
-                    source_message_id=2,
-                    force=True,
-                )
-            self.assertIsNotNone(out)
-            self.assertEqual(svc._db.count_pending(1), 1)
-            self.assertEqual(len(svc.list_active(1)), 0)
-            svc.maybe_handle_user_command(
-                user_id=1, user_text="可以", source_message_id=3
+            out = svc.maybe_llm_extract(
+                user_id=1,
+                llm=llm,
+                recent_turns=[
+                    {"role": "user", "content": "我叫小王，大三"},
+                    {"role": "assistant", "content": "你好小王。"},
+                ],
+                source_message_id=2,
+                force=True,
+                max_items=3,
             )
+            self.assertIsNotNone(out)
             actives = svc.list_active(1)
             self.assertEqual(len(actives), 1)
-            self.assertIn("倾听", actives[0].content)
+            self.assertIn("小王", actives[0].content)
+            self.assertEqual(actives[0].origin, "extracted")
 
     def test_empty_when_model_returns_nothing(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
             TraceStore(db).init()
             svc = ProfileService(db)
-            llm = StubLLM({"proposals": []})
-            with patch("product_app.app.memory.config.mem_cfg") as cfg:
-                cfg.profile_llm_propose_max = 1
-                cfg.profile_llm_skip_if_pending = True
-                cfg.profile_llm_trigger_messages = 5
-                cfg.profile_llm_trigger_age_sec = 300
-                out = svc.maybe_llm_propose(
-                    user_id=1,
-                    llm=llm,
-                    recent_turns=[
-                        {"role": "user", "content": "今天食堂什么菜"},
-                        {"role": "assistant", "content": "有红烧肉。"},
-                    ],
-                    source_message_id=2,
-                    force=True,
-                )
+            llm = StubLLM({"commands": []})
+            out = svc.maybe_llm_extract(
+                user_id=1,
+                llm=llm,
+                recent_turns=[
+                    {"role": "user", "content": "今天食堂什么菜"},
+                    {"role": "assistant", "content": "有红烧肉。"},
+                ],
+                source_message_id=2,
+                force=True,
+                max_items=3,
+            )
             self.assertIsNone(out)
             self.assertEqual(llm.calls, 1)
-            self.assertEqual(svc._db.count_pending(1), 0)
+            self.assertEqual(len(svc.list_active(1)), 0)
 
-    def test_skip_if_pending_already(self):
+    def test_llm_command_remember(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
             TraceStore(db).init()
             svc = ProfileService(db)
-            svc.propose(
+            out = svc.maybe_handle_user_command(
                 user_id=1,
-                content="已有待确认偏好希望少打断",
-                source_message_ids=[1],
-                source_messages=["希望你少打断我"],
+                user_text="请记住我叫小李",
+                source_message_id=1,
+                parsed={
+                    "action": "remember",
+                    "tag": "identity",
+                    "feature": "name",
+                    "value": "小李",
+                    "query": "",
+                },
             )
-            self.assertEqual(svc._db.count_pending(1), 1)
-            llm = StubLLM(
-                {
-                    "proposals": [
-                        {
-                            "content": "希望先被倾听",
-                            "evidence": "希望先被倾听",
-                        }
-                    ]
-                }
-            )
-            with patch("product_app.app.memory.config.mem_cfg") as cfg:
-                cfg.profile_llm_propose_max = 1
-                cfg.profile_llm_skip_if_pending = True
-                cfg.profile_llm_trigger_messages = 5
-                cfg.profile_llm_trigger_age_sec = 300
-                out = svc.maybe_llm_propose(
-                    user_id=1,
-                    llm=llm,
-                    recent_turns=[
-                        {"role": "user", "content": "我希望先被倾听"},
-                        {"role": "assistant", "content": "嗯。"},
-                    ],
-                    source_message_id=3,
-                    force=True,
-                )
-            self.assertIsNone(out)
-            self.assertEqual(llm.calls, 0)
-            self.assertEqual(svc._db.count_pending(1), 1)
-
+            self.assertTrue(out and out.startswith("profile_saved:"))
+            self.assertEqual(len(svc.list_active(1)), 1)
 
     def test_batch_trigger_after_n_messages(self):
         with tempfile.TemporaryDirectory() as td:
@@ -167,45 +161,49 @@ class ProfileProposerTests(unittest.TestCase):
             svc = ProfileService(db)
             llm = StubLLM(
                 {
-                    "proposals": [
+                    "commands": [
                         {
-                            "content": "希望先被倾听",
-                            "evidence": "希望先被倾听",
+                            "command": "add",
+                            "tag": "education",
+                            "feature": "major",
+                            "value": "计算机",
+                            "evidence": "我是计算机专业",
                         }
                     ]
                 }
             )
-            with patch("product_app.app.memory.config.mem_cfg") as cfg:
-                cfg.profile_llm_propose_max = 1
-                cfg.profile_llm_skip_if_pending = True
-                cfg.profile_llm_trigger_messages = 3
-                cfg.profile_llm_trigger_age_sec = 99999
-                for _ in range(2):
-                    svc.note_message_for_llm_propose(1)
-                out = svc.maybe_llm_propose(
-                    user_id=1,
-                    llm=llm,
-                    recent_turns=[
-                        {"role": "user", "content": "我希望先被倾听"},
-                        {"role": "assistant", "content": "好。"},
-                    ],
-                    source_message_id=10,
-                )
-                self.assertIsNone(out)
-                self.assertEqual(llm.calls, 0)
+            for _ in range(2):
                 svc.note_message_for_llm_propose(1)
-                out = svc.maybe_llm_propose(
-                    user_id=1,
-                    llm=llm,
-                    recent_turns=[
-                        {"role": "user", "content": "我希望先被倾听"},
-                        {"role": "assistant", "content": "好。"},
-                    ],
-                    source_message_id=11,
-                )
-                self.assertIsNotNone(out)
-                self.assertEqual(llm.calls, 1)
-                self.assertEqual(svc._db.count_pending(1), 1)
+            out = svc.maybe_llm_extract(
+                user_id=1,
+                llm=llm,
+                recent_turns=[
+                    {"role": "user", "content": "我是计算机专业的"},
+                    {"role": "assistant", "content": "好。"},
+                ],
+                source_message_id=10,
+                trigger_messages=3,
+                trigger_age_sec=99999,
+                max_items=3,
+            )
+            self.assertIsNone(out)
+            self.assertEqual(llm.calls, 0)
+            svc.note_message_for_llm_propose(1)
+            out = svc.maybe_llm_extract(
+                user_id=1,
+                llm=llm,
+                recent_turns=[
+                    {"role": "user", "content": "我是计算机专业的"},
+                    {"role": "assistant", "content": "好。"},
+                ],
+                source_message_id=11,
+                trigger_messages=3,
+                trigger_age_sec=99999,
+                max_items=3,
+            )
+            self.assertIsNotNone(out)
+            self.assertEqual(llm.calls, 1)
+            self.assertEqual(len(svc.list_active(1)), 1)
 
 
 if __name__ == "__main__":

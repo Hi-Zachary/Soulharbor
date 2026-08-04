@@ -1,4 +1,4 @@
-"""Retrieval pipeline: plan → hybrid → stitch → merge → decay-MMR → chronological order."""
+"""Retrieval pipeline: plan → hybrid → multi-query Anchor CE → stitch → merge → MMR."""
 from __future__ import annotations
 
 import logging
@@ -16,6 +16,7 @@ from product_app.app.memory.store.stitch import SpanStitcher
 from product_app.app.memory.store.lexical_search import LexicalSearcher
 from product_app.app.memory.store.merge import merge_windows
 from product_app.app.memory.store.repository import TraceStore
+from product_app.app.memory.store.rerank import AnchorCrossEncoder
 from product_app.app.memory.store.select import select_windows, sort_by_time
 from product_app.app.memory.store.semantic import SemanticSearcher
 
@@ -61,6 +62,7 @@ class RetrievalPipeline:
         self._direct = DirectRetriever(semantic, lexical)
         self._split = SplitQueryRetriever(self._direct)
         self._stitcher = SpanStitcher(store, self._embedder)
+        self._anchor_ce = AnchorCrossEncoder()
         self._router = QueryRouter(llm)
 
     def set_llm(self, llm: Any) -> None:
@@ -100,6 +102,17 @@ class RetrievalPipeline:
                     exclude_message_ids=exclude,
                 )
 
+            before = len(anchors)
+            anchors = self._anchor_ce.select(
+                original_query=query,
+                planner_queries=list(plan.queries),
+                anchors=anchors,
+            )
+            trace.extra["anchor_ce"] = 1
+            trace.extra["anchor_ce_mode"] = "coverage"
+            trace.extra["rrf_anchors"] = before
+            trace.extra["ce_anchors"] = len(anchors)
+
             trace.semantic_hits = n_sem
             trace.lexical_hits = n_lex
             trace.anchors = len(anchors)
@@ -122,8 +135,6 @@ class RetrievalPipeline:
 
             profiles: List[ProfileItem] = []
             if mem_cfg.profile_enabled:
-                # Preferences are few and sticky — inject all active ones,
-                # not a query-filtered subset (avoids missing standing prefs).
                 profiles = self._profile.list_for_inject(user_id)
             trace.profile_hits = len(profiles)
             return windows, profiles, trace

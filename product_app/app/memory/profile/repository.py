@@ -1,4 +1,4 @@
-"""SQLite helpers for consent profile rows."""
+"""SQLite helpers for long-term profile rows."""
 from __future__ import annotations
 
 import json
@@ -101,6 +101,7 @@ class ProfileStore:
             return int(cur.rowcount or 0) > 0
 
     def soft_delete_matching(self, user_id: int, keyword: str) -> int:
+        """Soft-delete active rows whose content matches query substring or key."""
         key = (keyword or "").strip()
         if not key:
             return 0
@@ -115,6 +116,30 @@ class ProfileStore:
             for row in rows:
                 body = str(row["content"])
                 if key in body or body in key:
+                    conn.execute(
+                        "UPDATE support_profile_items SET status='deleted', updated_at=? "
+                        "WHERE id=?",
+                        (now, str(row["id"])),
+                    )
+                    removed += 1
+        return removed
+
+    def soft_delete_by_key(self, user_id: int, tag: str, feature: str) -> int:
+        """Soft-delete active rows for a structured [tag/feature] prefix."""
+        prefix = f"[{(tag or '').strip()}/{(feature or '').strip()}]"
+        if prefix == "[/]":
+            return 0
+        removed = 0
+        now = int(time.time())
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, content FROM support_profile_items "
+                "WHERE user_id=? AND status='active'",
+                (int(user_id),),
+            ).fetchall()
+            for row in rows:
+                body = str(row["content"])
+                if body.startswith(prefix):
                     conn.execute(
                         "UPDATE support_profile_items SET status='deleted', updated_at=? "
                         "WHERE id=?",

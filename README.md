@@ -19,7 +19,7 @@ SoulHarbor/
 ├── train/                # 微调脚本 + configs/*.yaml
 ├── evaluate/
 │   ├── dialogue/         # 主对话评测（data / runs / sampling / runners）
-│   └── memory/           # 长期记忆 QA（data/all_30.jsonl · runs · er_eval）
+│   └── memory/           # 长期记忆 QA（data/all_50.jsonl · runs · er_eval）
 ├── 项目文档/             # 00 故事 → 01–06 技术与评测
 └── archive/              # 非运行时历史（本地，不入库）
 ```
@@ -45,8 +45,8 @@ bash product_app/start.sh
 ## 记忆系统
 
 - 方案：`项目文档/05_记忆系统_ER经历重建_最终方案.md`
-- 评测：`项目文档/06_记忆系统_对比实验设计.md`
-- 数据：`evaluate/memory/data/all_30.jsonl`（构建见 `05` §9）
+- 评测：`项目文档/03_详尽技术文档.md` §8
+- 数据：`evaluate/memory/data/all_50.jsonl`（结果见 `03` §8）
 - 结果：`evaluate/memory/runs/`（固定 MiniMax-M3 reader）
 
 ## 评测

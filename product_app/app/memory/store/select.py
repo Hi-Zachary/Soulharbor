@@ -1,4 +1,4 @@
-"""Decay-aware MMR selection over experience windows (with recency)."""
+"""Decay-aware MMR selection over experience windows."""
 from __future__ import annotations
 
 import math
@@ -24,12 +24,11 @@ def latest_ts(window: Span) -> int:
 
 
 def week_bucket(window: Span, *, seconds: int = 7 * 86400) -> int:
-    """Bucket by the newest turn in the window (state-oriented)."""
     return int(latest_ts(window)) // int(seconds)
 
 
 def content_relevance(query: str, window: Span) -> float:
-    """R_content: retrieval fused score + query token overlap."""
+    """R_content = 2 * fused_RRF + 1.5 * Jaccard(q, W)."""
     q = tokens(query)
     text = "\n".join(t.content for t in window.messages)
     overlap = jaccard(q, tokens(text))
@@ -72,20 +71,16 @@ def decayed_relevance(
     return content_relevance(query, window) * (alpha + (1.0 - alpha) * d)
 
 
+def _window_sim(left: Span, right: Span) -> float:
+    return jaccard(_content_bigrams(left), _content_bigrams(right))
+
+
 def recency_score(window: Span, *, t_ref: int, tau_sec: float | None = None) -> float:
-    """
-    Relative recency inside the candidate pool:
-    exp(-(t_ref - latest_ts(W)) / tau). Newer windows ≈ 1.
-    """
     tau = float(mem_cfg.mmr_recency_tau_sec if tau_sec is None else tau_sec)
     if tau <= 0:
         return 1.0
     dt = max(0, int(t_ref) - latest_ts(window))
     return math.exp(-dt / tau)
-
-
-def _window_sim(left: Span, right: Span) -> float:
-    return jaccard(_content_bigrams(left), _content_bigrams(right))
 
 
 def sort_by_time(bundles: List[Span]) -> List[Span]:
@@ -102,7 +97,7 @@ def select_windows(
     now: int | None = None,
 ) -> List[Span]:
     """
-    Default `mmr`: decay-aware MMR + relative recency / new-week bonus.
+    Default `mmr`: decay-aware MMR over legacy R_content.
     `topk`: keep upstream order, take first N.
     Legacy alias: `coverage` → `mmr`.
     """
@@ -121,12 +116,9 @@ def select_windows(
         keys = [window_key(w) for w in bundles]
         strengths = store.get_window_strengths(user_id=user_id, window_keys=keys)
 
-    # Anchor recency to the newest evidence in this candidate pool (not wall-clock),
-    # so historical eval dialogues still get a meaningful "current state" bias.
     t_ref = max((latest_ts(w) for w in bundles), default=now_i)
     beta = float(mem_cfg.mmr_recency_beta)
     week_bonus = float(mem_cfg.mmr_week_bonus)
-
     remaining = list(bundles)
     chosen: List[Span] = []
     seen_weeks: Set[int] = set()
@@ -141,9 +133,9 @@ def select_windows(
             rel = decayed_relevance(
                 query, window, strength=w0, reinforced_at=t0, now=now_i
             )
-            recent = recency_score(window, t_ref=t_ref)
+            recent = recency_score(window, t_ref=t_ref) if beta > 0 else 0.0
             week = week_bucket(window)
-            bucket = week_bonus if week not in seen_weeks else 0.0
+            bucket = week_bonus if (week_bonus > 0 and week not in seen_weeks) else 0.0
             r_eff = rel + beta * recent + bucket
             redundancy = 0.0
             if chosen:
@@ -155,11 +147,12 @@ def select_windows(
 
         if best_idx < 0:
             break
-        if chosen and best_score < 0.0:
+        if chosen and best_score < 0.0 and mem_cfg.mmr_stop_on_negative:
             break
 
         pick = remaining.pop(best_idx)
         chosen.append(pick)
-        seen_weeks.add(week_bucket(pick))
+        if week_bonus > 0:
+            seen_weeks.add(week_bucket(pick))
 
     return chosen

@@ -29,11 +29,12 @@ class MemorySettings:
     backend: str = _backend()
     store_enabled: bool = _b("MEMORY_STORE_ENABLED", "1")
     profile_enabled: bool = _b("MEMORY_PROFILE_ENABLED", "1")
-    # After assistant turns, Chinese LLM may propose pending prefs (consent still required).
+    # After assistant turns, Chinese LLM may extract allowlisted long-term facts.
     profile_llm_propose: bool = _b("MEMORY_PROFILE_LLM_PROPOSE", "1")
-    profile_llm_propose_max: int = int(os.environ.get("MEMORY_PROFILE_LLM_PROPOSE_MAX", "1"))
-    profile_llm_skip_if_pending: bool = _b("MEMORY_PROFILE_LLM_SKIP_IF_PENDING", "1")
-    # Batch-gated propose: after N new messages or age (seconds).
+    profile_llm_propose_max: int = int(os.environ.get("MEMORY_PROFILE_LLM_PROPOSE_MAX", "3"))
+    # Legacy flag (pending queue removed); kept so old env files still load.
+    profile_llm_skip_if_pending: bool = _b("MEMORY_PROFILE_LLM_SKIP_IF_PENDING", "0")
+    # Batch-gated extract: after N new messages or age (seconds).
     profile_llm_trigger_messages: int = int(
         os.environ.get("MEMORY_PROFILE_LLM_TRIGGER_MESSAGES", "5")
     )
@@ -41,13 +42,19 @@ class MemorySettings:
         os.environ.get("MEMORY_PROFILE_LLM_TRIGGER_AGE_SEC", "300")
     )
     split_query_enabled: bool = _b("MEMORY_SPLIT_QUERY_ENABLED", "1")
-    # Feature rerank removed from default ER path; flag kept for ablation/legacy.
-    rerank_enabled: bool = _b("MEMORY_BUNDLE_RERANK_ENABLED", "0")
+
+    # Multi-query coverage CE on raw anchors (formal final path).
+    rrf_top_k: int = int(os.environ.get("MEMORY_RRF_TOP_K", "40"))
+    anchor_ce_top_k: int = int(os.environ.get("MEMORY_ANCHOR_CE_TOP_K", "12"))
+    anchor_ce_orig_top: int = int(os.environ.get("MEMORY_ANCHOR_CE_ORIG_TOP", "4"))
+    anchor_ce_sub_top: int = int(os.environ.get("MEMORY_ANCHOR_CE_SUB_TOP", "3"))
+    anchor_ce_min_per_query: int = int(os.environ.get("MEMORY_ANCHOR_CE_MIN_PER_QUERY", "1"))
+    rerank_max_length: int = int(os.environ.get("MEMORY_RERANK_MAX_LENGTH", "1024"))
+    rerank_batch_size: int = int(os.environ.get("MEMORY_RERANK_BATCH_SIZE", "16"))
     observability: bool = _b("MEMORY_OBSERVABILITY", "1")
 
     # Experience Rebuild (ER): adaptive / fixed stitch
     stitch_mode: str = _env("MEMORY_STITCH_MODE", "MEMORY_EXPAND_MODE", default="adaptive")
-    # Cosine threshold vs anchor (legacy alias: CONTINUITY_THRESHOLD).
     stitch_cos_threshold: float = float(
         _env(
             "MEMORY_STITCH_COS_THRESHOLD",
@@ -56,15 +63,12 @@ class MemorySettings:
             default="0.40",
         )
     )
-    # Adjacent entity escape: max position distance from current window edge.
     stitch_entity_dist: int = int(os.environ.get("MEMORY_STITCH_ENTITY_DIST", "2"))
     stitch_max_misses: int = int(os.environ.get("MEMORY_STITCH_MAX_MISSES", "2"))
     stitch_max_span: int = int(
         _env("MEMORY_STITCH_MAX_SPAN", "MEMORY_EXPAND_MAX_SPAN", default="12")
     )
-    # mmr | topk  (legacy: coverage → mmr)
     evidence_selection_mode: str = os.environ.get("EVIDENCE_SELECTION_MODE", "mmr")
-    # Explicit cross-session chain scoring removed; chronological injection handles order.
     cross_session_linking: bool = _b("MEMORY_CROSS_SESSION_LINKING", "0")
     link_score_threshold: float = float(os.environ.get("MEMORY_LINK_THRESHOLD", "0.22"))
 
@@ -74,18 +78,18 @@ class MemorySettings:
     decay_tau_sec: float = float(os.environ.get("MEMORY_DECAY_TAU_SEC", str(90 * 86400)))
     decay_alpha: float = float(os.environ.get("MEMORY_DECAY_ALPHA", "0.5"))
     mmr_lambda: float = float(os.environ.get("MEMORY_MMR_LAMBDA", "0.7"))
-    # Relative recency inside the candidate pool (helps current_state / anti-stale).
     mmr_recency_beta: float = float(os.environ.get("MEMORY_MMR_RECENCY_BETA", "0.8"))
     mmr_recency_tau_sec: float = float(
         os.environ.get("MEMORY_MMR_RECENCY_TAU_SEC", str(21 * 86400))
     )
     mmr_week_bonus: float = float(os.environ.get("MEMORY_MMR_WEEK_BONUS", "0.5"))
+    mmr_stop_on_negative: bool = _b("MEMORY_MMR_STOP_ON_NEGATIVE", "0")
     reinforce_enabled: bool = _b("MEMORY_REINFORCE_ENABLED", "1")
     reinforce_eta: float = float(os.environ.get("MEMORY_REINFORCE_ETA", "0.1"))
 
     context_token_budget: int = int(os.environ.get("MEMORY_CONTEXT_TOKEN_BUDGET", "1600"))
-    semantic_top_k: int = int(os.environ.get("MEMORY_SEMANTIC_TOP_K", "30"))
-    lexical_top_k: int = int(os.environ.get("MEMORY_LEXICAL_TOP_K", "30"))
+    semantic_top_k: int = int(os.environ.get("MEMORY_SEMANTIC_TOP_K", "50"))
+    lexical_top_k: int = int(os.environ.get("MEMORY_LEXICAL_TOP_K", "50"))
     anchor_top_k: int = int(
         _env("MEMORY_ANCHOR_TOP_K", "MEMORY_FOCUS_TOP_K", "MEMORY_SEED_TOP_K", default="8")
     )
@@ -98,15 +102,15 @@ class MemorySettings:
     chunk_target_max: int = int(os.environ.get("MEMORY_CHUNK_TARGET_MAX", "350"))
     assistant_weight: float = float(os.environ.get("MEMORY_ASSISTANT_WEIGHT", "0.55"))
     embed_retry_max: int = int(os.environ.get("MEMORY_EMBED_RETRY_MAX", "5"))
-    # FAISS IndexFlatIP over stored BGE vectors (fallback: Python cosine loop).
     ann_enabled: bool = _b("MEMORY_ANN_ENABLED", "1")
 
-    # Back-compat alias used by older call sites / tests.
+    def fuse_top_k(self) -> int:
+        return int(self.rrf_top_k) if self.rrf_top_k > 0 else int(self.anchor_top_k)
+
     @property
     def stitch_continuity_threshold(self) -> float:
         return self.stitch_cos_threshold
 
 
-# module-level settings used by store / retrieval
 mem_cfg = MemorySettings()
 memory_settings = mem_cfg

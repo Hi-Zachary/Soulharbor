@@ -15,4 +15,4 @@ class MemoryRetrievalError(MemoryError):
 
 
 class MemoryProfileError(MemoryError):
-    """Failed while updating consent profiles."""
+    """Failed while updating long-term profile facts."""

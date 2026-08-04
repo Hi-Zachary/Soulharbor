@@ -5,8 +5,8 @@ Uses the same reader / judge / content_f1 scoring as run_qa_er.py so
 results are comparable on evaluate/memory/data (the final eval set).
 
   python run_qa_mem0.py --selftest
-  python run_qa_mem0.py --data ../data/all_30.jsonl --limit 1 --workers 1
-  python run_qa_mem0.py --data ../data/all_30.jsonl --workers 4 --qa-workers 3
+  python run_qa_mem0.py --data ../data/all_50.jsonl --limit 1 --workers 1
+  python run_qa_mem0.py --data ../data/all_50.jsonl --workers 4 --qa-workers 3
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from run_qa_er import (  # noqa: E402
     score_questions,
 )
 
-DATA_DEFAULT = PROJECT / "evaluate/memory/data/all_30.jsonl"
+DATA_DEFAULT = PROJECT / "evaluate/memory/data/all_50.jsonl"
 EMBED_DEFAULT = PROJECT / "models/encoders/bge-m3"
 
 _PRINT_LOCK = threading.Lock()

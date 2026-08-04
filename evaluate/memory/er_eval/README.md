@@ -2,7 +2,7 @@
 
 评测 **SoulHarbor 经历重建（ER）长期记忆**，并可同协议对照官方 Mem0。
 
-主数据：`../data/all_30.jsonl`（细节/上下文/偏好/现状/跨会话/时序）。
+主数据：`../data/all_50.jsonl`（细节/上下文/偏好/现状/跨会话/时序）。
 
 ## Setup
 
@@ -21,11 +21,11 @@ cd /root/autodl-tmp/SoulHarbor/evaluate/memory/er_eval
 # ER
 /root/autodl-tmp/CondaEnv/soulhar/bin/python run_qa_er.py --selftest
 /root/autodl-tmp/CondaEnv/soulhar/bin/python run_qa_er.py \
-  --data ../data/all_30.jsonl --workers 4 --qa-workers 3
+  --data ../data/all_50.jsonl --workers 4 --qa-workers 3
 
 # Mem0（同协议对照）
 /root/autodl-tmp/CondaEnv/soulhar/bin/python run_qa_mem0.py \
-  --data ../data/all_30.jsonl --workers 4 --qa-workers 3
+  --data ../data/all_50.jsonl --workers 4 --qa-workers 3
 ```
 
 结果写入 `../runs/qa_er_*/`、`../runs/qa_mem0_*/`（`summary.json` + `results.jsonl`）。历史目录名 `qa_er_*` / `qa_aer_*` 仍可对照。

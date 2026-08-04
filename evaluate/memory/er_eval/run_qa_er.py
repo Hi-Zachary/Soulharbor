@@ -30,7 +30,7 @@ sys.path.insert(0, str(PROJECT))
 
 from api_llm import APILLM  # noqa: E402
 
-DATA_DEFAULT = PROJECT / "evaluate/memory/data/all_30.jsonl"
+DATA_DEFAULT = PROJECT / "evaluate/memory/data/all_50.jsonl"
 EMBED_DEFAULT = PROJECT / "models/encoders/bge-m3"
 BASE_TS = 1_700_000_000
 
@@ -53,13 +53,12 @@ def week_ts(week: int) -> int:
     return int(BASE_TS + max(1, int(week or 1)) * 7 * 86400)
 
 
-def _prepare_cpu_embedder() -> None:
+def _prepare_embedder() -> None:
     from product_app.app.memory.embeddings import MemoryEmbedder
 
     MemoryEmbedder.reset()
     emb = MemoryEmbedder.shared()
-    emb._device = "cpu"
-    emb._use_fp16 = False
+    # Follow the project runtime config: prefer GPU when available.
     lock = threading.RLock()
     orig = emb.embed_batch
 
@@ -279,7 +278,12 @@ def score_questions(answers: List[Dict[str, Any]]) -> Dict[str, Any]:
     n = len(answers)
     correct = sum(1 for a in answers if a.get("correct"))
     overgen_rows = [a for a in answers if str(a.get("probes") or "") == "overgeneralization"]
-    stale_rows = [a for a in answers if str(a.get("probes") or "") in {"staleness", "current"}]
+    # all_50 may use probes=current or current_state for the same stale/current checks
+    stale_rows = [
+        a
+        for a in answers
+        if str(a.get("probes") or "") in {"staleness", "current", "current_state"}
+    ]
     overgen = sum(1 for a in overgen_rows if not a.get("correct"))
     stale = sum(1 for a in stale_rows if not a.get("correct"))
     return {
@@ -420,7 +424,7 @@ def selftest(cfg: dict) -> None:
     out = llm.generate_structured([{"role": "user", "content": "只回复两个字：OK"}], max_new_tokens=64)
     print("[chat 自测]", repr(out))
     assert "<think>" not in out
-    _prepare_cpu_embedder()
+    _prepare_embedder()
     with tempfile.TemporaryDirectory(prefix="episodic_selftest_") as td:
         eng = EpisodicMethod(work_dir=Path(td), llm=llm)
         eng.ingest_conversation(
@@ -462,7 +466,7 @@ def main() -> None:
     from rate_limit import patch_openai_for_mem0
 
     patch_openai_for_mem0(cfg)
-    _prepare_cpu_embedder()
+    _prepare_embedder()
     llm = APILLM(cfg)
 
     cats = [c.strip() for c in args.categories.split(",") if c.strip()] or None

@@ -1,40 +1,64 @@
-"""Safety checks before writing a profile item."""
+"""Structural checks before writing a profile fact (no keyword blocklists)."""
 from __future__ import annotations
 
-import re
 from typing import Sequence
 
-_BLOCKED_CLINICAL = re.compile(
-    r"(抑郁症|双相|人格障碍|自杀倾向|精神病|回避型人格|焦虑症患者|诊断为|创伤导致)"
-)
-_BLOCKED_LABEL = re.compile(r"(高焦虑个体|回避型|依恋类型|人格类型|病态)")
-_FLEETING = re.compile(r"^(今天有点|刚才有点|突然觉得|这会儿)(难过|烦|累|开心)")
+from product_app.app.memory.profile.schema import ProfileFact, is_allowed, normalize_fact
 
 
 class ProfilePolicy:
-    def validate(
+    def validate_fact(
         self,
         *,
-        candidate: str,
+        fact: ProfileFact,
         origin: str,
         source_messages: Sequence[str],
     ) -> tuple[bool, str]:
-        text = (candidate or "").strip()
-        if not text:
-            return False, "empty"
-        if origin not in ("explicit", "confirmed"):
+        if origin not in ("extracted", "explicit"):
             return False, "bad_origin"
+        if not is_allowed(fact.tag, fact.feature):
+            return False, "not_allowlisted"
+        value = (fact.value or "").strip()
+        if not value:
+            return False, "empty"
+        if len(value) < 1:
+            return False, "too_short"
         if not source_messages:
             return False, "no_source"
-        if _BLOCKED_CLINICAL.search(text) or _BLOCKED_LABEL.search(text):
-            return False, "diagnosis_or_sensitive"
-        if _FLEETING.search(text):
-            return False, "transient_emotion"
-        if len(text) < 4:
-            return False, "too_short"
-
         joined = "\n".join(source_messages)
-        overlap = sum(1 for ch in text if ch in joined)
-        if overlap < max(2, len(text) // 8):
+        # Soft evidence: value chars should overlap user text a bit.
+        overlap = sum(1 for ch in value if ch in joined)
+        if overlap < max(1, len(value) // 8):
             return False, "source_mismatch"
         return True, "ok"
+
+    def validate_content(
+        self,
+        *,
+        content: str,
+        origin: str,
+        source_messages: Sequence[str],
+    ) -> tuple[bool, str]:
+        """Legacy free-text path: accept only if content encodes an allowlisted fact."""
+        text = (content or "").strip()
+        if not text:
+            return False, "empty"
+        # Prefer `[tag/feature] label：value`
+        from product_app.app.memory.profile.schema import parse_content_key
+
+        key = parse_content_key(text)
+        if not key:
+            return False, "not_structured"
+        tag, feature = key
+        # value after "：" or ":"
+        value = text
+        for sep in ("：", ":"):
+            if sep in text:
+                value = text.split(sep, 1)[-1].strip()
+                break
+        fact = normalize_fact(tag=tag, feature=feature, value=value)
+        if not fact:
+            return False, "not_allowlisted"
+        return self.validate_fact(
+            fact=fact, origin=origin, source_messages=source_messages or [value]
+        )
