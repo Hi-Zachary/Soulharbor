@@ -86,7 +86,8 @@ export MEMORY_BACKEND="${MEMORY_BACKEND:-er}"
 # Candidate caps (not injection guarantees); token budget still decides final size.
 export MEMORY_ANCHOR_CE_TOP_K="${MEMORY_ANCHOR_CE_TOP_K:-12}"
 export MEMORY_WINDOW_TOP_K="${MEMORY_WINDOW_TOP_K:-12}"
-echo "VRAM policy: LLM_4BIT=${SOULHARBOR_LLM_4BIT} embed=${SOULHARBOR_MEMORY_EMBED_DEVICE} cls=${SOULHARBOR_CLASSIFIER_DEVICE} memory=${MEMORY_BACKEND} ce_k=${MEMORY_ANCHOR_CE_TOP_K} window_k=${MEMORY_WINDOW_TOP_K}"
+export MEMORY_TIMEZONE="${MEMORY_TIMEZONE:-Asia/Shanghai}"
+echo "VRAM policy: LLM_4BIT=${SOULHARBOR_LLM_4BIT} embed=${SOULHARBOR_MEMORY_EMBED_DEVICE} cls=${SOULHARBOR_CLASSIFIER_DEVICE} memory=${MEMORY_BACKEND} ce_k=${MEMORY_ANCHOR_CE_TOP_K} window_k=${MEMORY_WINDOW_TOP_K} tz=${MEMORY_TIMEZONE}"
 
 echo "Starting SoulHarbor Product App: port=${PORT}"
 exec uvicorn product_app.app.main:app --host 0.0.0.0 --port "${PORT}" --log-level info

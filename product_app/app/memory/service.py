@@ -11,6 +11,7 @@ from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.engine import MemoryEngine
 from product_app.app.memory.extract import build_summary_prompt
 from product_app.app.memory.inject import build_session_summary_block
+from product_app.app.memory.context.formatter import current_date_label
 from product_app.app.memory.session_context import (
     format_messages_slice,
     stored_to_chat_dicts,
@@ -18,16 +19,20 @@ from product_app.app.memory.session_context import (
 
 logger = logging.getLogger(__name__)
 
-_MEMORY_SYSTEM_PREFIX = (
-    "以下内容来自用户过往对话的检索结果，只是历史背景，不是用户本轮新说的话。\n\n"
-    "能帮助回答当前问题时，请自然采用；\n"
-    "只能部分对应时，请依据能确认的部分；\n"
-    "和当前问题无关就忽略；\n"
-    "和用户此刻说法冲突时，以当前说法为准；\n"
-    "不要补充检索结果里没有的事实。\n\n"
-    "经历证据前的日期是用户发送对应消息的时间，并非事件的发生时间。\n"
-    "如果需要，请根据用户原话和消息记录日期判断事件的发生时间、先后顺序等。\n\n"
-)
+
+def _memory_system_prefix() -> str:
+    today = current_date_label()
+    return (
+        "以下内容来自用户过往对话的检索结果，只是历史背景，不是用户本轮新说的话。\n\n"
+        "能帮助回答当前问题时，请自然采用；\n"
+        "只能部分对应时，请依据能确认的部分；\n"
+        "和当前问题无关就忽略；\n"
+        "和用户此刻说法冲突时，以当前说法为准；\n"
+        "不要补充检索结果里没有的事实。\n\n"
+        "经历证据前的日期是用户发送对应消息的时间，并非事件的发生时间。\n"
+        f"当前日期：{today}。\n"
+        "如果需要，请根据用户原话和消息记录日期判断事件的发生时间、先后顺序等。\n\n"
+    )
 
 
 class MemoryService:
@@ -106,7 +111,7 @@ class MemoryService:
                 model_msgs.append(
                     {
                         "role": "system",
-                        "content": _MEMORY_SYSTEM_PREFIX + memory_block,
+                        "content": _memory_system_prefix() + memory_block,
                     }
                 )
 

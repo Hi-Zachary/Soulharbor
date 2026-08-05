@@ -156,7 +156,6 @@ class MemoryEngine:
                 query=query,
                 exclude_message_ids=exclude_message_ids,
             )
-            trace.selected_bundles = len(windows)
             trace.enough = is_enough(windows, profiles)
 
             budget = int(token_budget or mem_cfg.context_token_budget)
@@ -168,7 +167,10 @@ class MemoryEngine:
                 token_counter=counter,
                 query=query,
             )
+            # selected_bundles = windows actually packed into the prompt.
+            trace.selected_bundles = packed_count
             trace.extra["packed_window_count"] = packed_count
+            trace.extra["topk_before_budget"] = len(windows)
             if counter and block:
                 trace.memory_tokens = int(counter(block))
             else:

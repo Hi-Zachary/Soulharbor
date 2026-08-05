@@ -245,16 +245,18 @@ class SpanStitcher:
 
                 turns = sorted(by_id.values(), key=lambda t: t.position)
                 if len(turns) > max_msgs:
-                    anchor_pos = {t.position for t in turns if t.is_anchor}
-                    if not anchor_pos:
+                    anchor_turns = [t for t in turns if t.is_anchor]
+                    neighbor_turns = [t for t in turns if not t.is_anchor]
+                    if not anchor_turns:
                         turns = turns[:max_msgs]
                     else:
-                        center = sum(anchor_pos) / len(anchor_pos)
+                        center = sum(t.position for t in anchor_turns) / len(anchor_turns)
+                        neighbor_limit = max(0, max_msgs - len(anchor_turns))
+                        neighbor_turns.sort(key=lambda t: abs(t.position - center))
                         turns = sorted(
-                            turns,
-                            key=lambda t: (0 if t.is_anchor else 1, abs(t.position - center)),
-                        )[:max_msgs]
-                        turns = sorted(turns, key=lambda t: t.position)
+                            anchor_turns + neighbor_turns[:neighbor_limit],
+                            key=lambda t: t.position,
+                        )
 
                 out.append(
                     Span(

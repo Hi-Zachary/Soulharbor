@@ -54,6 +54,25 @@ def collapse_anchor_chunks(anchors: List[RankedHit]) -> List[RankedHit]:
     )
 
 
+def _take_unique_messages(
+    anchors: List[RankedHit],
+    limit: int,
+) -> List[RankedHit]:
+    """Keep first occurrences up to ``limit`` distinct message_id values."""
+    if limit <= 0:
+        return []
+    selected: List[RankedHit] = []
+    seen: Set[int] = set()
+    for hit in anchors:
+        if hit.message_id in seen:
+            continue
+        selected.append(hit)
+        seen.add(hit.message_id)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def _coverage_select_anchors(
     anchors: List[RankedHit],
     score_matrix: List[List[float]],
@@ -169,14 +188,14 @@ class AnchorCrossEncoder:
         top_n = int(keep if keep is not None else mem_cfg.anchor_ce_top_k)
         queries = _ce_query_set(original_query, planner_queries)
         if not queries or top_n <= 0:
-            return anchors[:top_n]
+            return _take_unique_messages(anchors, top_n)
 
         texts = [(a.content or "").strip() for a in anchors]
         try:
             score_matrix = [self._score_text_pairs(q, texts) for q in queries]
         except Exception:
             logger.warning("raw-anchor cross-encoder scoring failed", exc_info=True)
-            return anchors[:top_n]
+            return _take_unique_messages(anchors, top_n)
 
         if len(queries) == 1:
             scores = score_matrix[0]

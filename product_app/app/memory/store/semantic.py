@@ -36,7 +36,6 @@ class SemanticSearcher:
 
         skip = {int(x) for x in (exclude_message_ids or set())}
         top_n = int(limit or mem_cfg.semantic_top_k)
-        assistant_scale = float(mem_cfg.assistant_weight)
 
         if mem_cfg.ann_enabled:
             try:
@@ -45,7 +44,6 @@ class SemanticSearcher:
                     query_vec=query_vec,
                     top_n=top_n,
                     skip=skip,
-                    assistant_scale=assistant_scale,
                 )
                 if hits is not None:
                     return hits
@@ -57,7 +55,6 @@ class SemanticSearcher:
             query_vec=query_vec,
             top_n=top_n,
             skip=skip,
-            assistant_scale=assistant_scale,
         )
 
     def _search_ann(
@@ -67,7 +64,6 @@ class SemanticSearcher:
         query_vec: List[float],
         top_n: int,
         skip: Set[int],
-        assistant_scale: float,
     ) -> Optional[List[RankedHit]]:
         fingerprint = self._store.active_embedding_fingerprint(user_id)
         # Need rows only when cache miss / fingerprint change.
@@ -83,7 +79,7 @@ class SemanticSearcher:
         if not user_index.rows:
             return []
 
-        # Over-fetch so assistant down-weight + exclude_message_ids still leave top_n.
+        # Over-fetch so exclude_message_ids / role filters still leave top_n user hits.
         overfetch = min(len(user_index.rows), max(top_n * 5, top_n + len(skip) + 8))
         scored = ann_cache().search(user_index, query_vec, top_k=overfetch)
 
@@ -91,8 +87,9 @@ class SemanticSearcher:
         for score, row in scored:
             if row.message_id in skip:
                 continue
-            if row.role == "assistant":
-                score *= assistant_scale
+            # Long-term evidence injects user turns only; do not spend Dense slots on assistant.
+            if row.role != "user":
+                continue
             if score <= 0:
                 continue
             ranked.append((score, self._to_hit(row)))
@@ -111,15 +108,14 @@ class SemanticSearcher:
         query_vec: List[float],
         top_n: int,
         skip: Set[int],
-        assistant_scale: float,
     ) -> List[RankedHit]:
         scored: List[Tuple[float, RankedHit]] = []
         for row in self._store.list_active_with_embeddings(user_id, limit=5000):
             if row.message_id in skip or not row.embedding:
                 continue
+            if row.role != "user":
+                continue
             score = cosine_similarity(query_vec, row.embedding)
-            if row.role == "assistant":
-                score *= assistant_scale
             if score <= 0:
                 continue
             scored.append((score, self._to_hit(row)))

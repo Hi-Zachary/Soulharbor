@@ -90,6 +90,8 @@ class MemorySettings:
     assistant_weight: float = float(os.environ.get("MEMORY_ASSISTANT_WEIGHT", "0.55"))
     embed_retry_max: int = int(os.environ.get("MEMORY_EMBED_RETRY_MAX", "5"))
     ann_enabled: bool = _b("MEMORY_ANN_ENABLED", "1")
+    # Display timezone for「记录于」labels and the dynamic「当前日期」hint.
+    memory_timezone: str = os.environ.get("MEMORY_TIMEZONE", "Asia/Shanghai")
 
     def fuse_top_k(self) -> int:
         return int(self.rrf_top_k) if self.rrf_top_k > 0 else int(self.anchor_top_k)

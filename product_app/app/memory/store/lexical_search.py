@@ -65,7 +65,7 @@ class LexicalSearcher:
         rows = [
             row
             for row in self._store.list_active_with_embeddings(user_id, limit=5000)
-            if row.message_id not in skip
+            if row.message_id not in skip and row.role == "user"
         ]
         if not rows:
             return []
@@ -79,7 +79,6 @@ class LexicalSearcher:
         n_docs = len(docs)
         avg_len = sum(len(d) for d in docs) / max(1, n_docs)
         wanted = set(query_terms)
-        assistant_scale = float(mem_cfg.assistant_weight)
 
         scored: List[Tuple[float, RankedHit]] = []
         for row, terms in zip(rows, docs):
@@ -95,8 +94,6 @@ class LexicalSearcher:
                 freq = tf[term]
                 denom = freq + _K1 * (1.0 - _B + _B * doc_len / avg_len)
                 score += idf * (freq * (_K1 + 1.0)) / denom
-            if row.role == "assistant":
-                score *= assistant_scale
             if score <= 0:
                 continue
             scored.append(

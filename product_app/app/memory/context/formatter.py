@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import re
-import time
+from datetime import datetime
 from typing import Dict, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
 
+from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
 from product_app.app.memory.models import Span, ProfileItem, SpanTurn
 from product_app.app.memory.store.text_sim import cosine, jaccard, tokens
@@ -23,9 +25,21 @@ _SENT_VEC_CACHE: Dict[str, List[float]] = {}
 _SENT_VEC_CACHE_MAX = 2048
 
 
+def _tz() -> ZoneInfo:
+    try:
+        return ZoneInfo(str(mem_cfg.memory_timezone or "Asia/Shanghai"))
+    except Exception:
+        return ZoneInfo("Asia/Shanghai")
+
+
+def current_date_label() -> str:
+    """Today's calendar date in the configured memory timezone."""
+    return datetime.now(_tz()).strftime("%Y-%m-%d")
+
+
 def _date_label(ts: int) -> str:
     try:
-        return time.strftime("%Y-%m-%d", time.localtime(int(ts)))
+        return datetime.fromtimestamp(int(ts), tz=_tz()).strftime("%Y-%m-%d")
     except Exception:
         return ""
 
@@ -370,6 +384,7 @@ def format_sections(
     model = embedder
     query_vec: Optional[List[float]] = None
     snip_plan: Dict[int, Tuple[List[str], List[float]]] = {}
+    parts.append(f"当前日期：{current_date_label()}。")
 
     if bundles:
         # Chronological injection: no explicit cross-session chain_id.
