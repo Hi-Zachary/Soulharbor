@@ -117,25 +117,32 @@ def content_hash(text: str) -> str:
 
 
 def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_anchor_at: int | None = None) -> List[Dict[str, Any]]:
-    """Collapse multi-chunk rows into one dict per message_id."""
-    seen: set[int] = set()
-    out: List[Dict[str, Any]] = []
+    """Aggregate multi-chunk rows into one full message per message_id."""
+    grouped: Dict[int, List[sqlite3.Row]] = {}
+    order: List[int] = []
+
     for row in rows:
-        mid = int(row["message_id"])
-        if mid in seen:
-            continue
-        seen.add(mid)
+        message_id = int(row["message_id"])
+        if message_id not in grouped:
+            grouped[message_id] = []
+            order.append(message_id)
+        grouped[message_id].append(row)
+
+    messages: List[Dict[str, Any]] = []
+    for message_id in order:
+        chunks = sorted(grouped[message_id], key=lambda row: int(row["chunk_index"]))
+        first = chunks[0]
         item = {
-            "message_id": mid,
-            "role": str(row["role"]),
-            "position": int(row["position"]),
-            "content": str(row["content"]),
-            "created_at": int(row["created_at"]),
+            "message_id": message_id,
+            "role": str(first["role"]),
+            "position": int(first["position"]),
+            "content": "".join(str(row["content"]) for row in chunks),
+            "created_at": int(first["created_at"]),
         }
         if mark_anchor_at is not None:
-            item["is_anchor"] = int(row["position"]) == int(mark_anchor_at)
-        out.append(item)
-    return out
+            item["is_anchor"] = int(first["position"]) == int(mark_anchor_at)
+        messages.append(item)
+    return messages
 
 
 class TraceStore:
@@ -336,19 +343,39 @@ class TraceStore:
             return _unique_messages(rows)
 
     def list_recent_messages(self, user_id: int, limit: int = 8) -> List[Dict[str, Any]]:
-        """Latest distinct messages for a user (any conversation), oldest→newest."""
+        """Latest distinct messages for a user (any conversation), oldest→newest.
+
+        Fetches N distinct message_ids first, then all chunks for those ids so
+        long multi-chunk messages are fully reconstructed.
+        """
+        n = max(1, int(limit))
         with self._db() as conn:
+            id_rows = conn.execute(
+                "SELECT message_id FROM ("
+                "  SELECT message_id, MAX(created_at) AS ts "
+                "  FROM memory_blocks "
+                "  WHERE user_id=? AND is_deleted=0 "
+                "  GROUP BY message_id "
+                "  ORDER BY ts DESC, message_id DESC "
+                "  LIMIT ?"
+                ")",
+                (int(user_id), n),
+            ).fetchall()
+            if not id_rows:
+                return []
+            ids_newest_first = [int(r["message_id"]) for r in id_rows]
+            ids_chrono = list(reversed(ids_newest_first))
+            placeholders = ",".join("?" * len(ids_chrono))
             rows = conn.execute(
                 "SELECT message_id, role, position, content, created_at, chunk_index "
                 "FROM memory_blocks "
-                "WHERE user_id=? AND is_deleted=0 "
-                "ORDER BY created_at DESC, message_id DESC, chunk_index ASC "
-                "LIMIT ?",
-                (int(user_id), max(1, int(limit)) * 4),
+                f"WHERE user_id=? AND is_deleted=0 AND message_id IN ({placeholders}) "
+                "ORDER BY created_at ASC, message_id ASC, chunk_index ASC",
+                (int(user_id), *ids_chrono),
             ).fetchall()
             msgs = _unique_messages(rows)
-            msgs = msgs[: max(1, int(limit))]
-            msgs.reverse()
+            order = {mid: i for i, mid in enumerate(ids_chrono)}
+            msgs.sort(key=lambda m: order.get(int(m["message_id"]), 0))
             return msgs
 
     def neighbor_messages(

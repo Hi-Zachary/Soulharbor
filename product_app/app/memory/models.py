@@ -45,6 +45,7 @@ class RankedHit:
     semantic_rank: Optional[int] = None
     lexical_rank: Optional[int] = None
     fused_score: float = 0.0
+    rerank_score: float = 0.0
 
 
 @dataclass

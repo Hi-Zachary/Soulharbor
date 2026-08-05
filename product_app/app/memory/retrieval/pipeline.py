@@ -1,4 +1,4 @@
-"""Retrieval pipeline: plan → hybrid → multi-query Anchor CE → stitch → merge → MMR."""
+"""Retrieval pipeline: plan → hybrid → CE → collapse → stitch → merge → Top-k → chrono."""
 from __future__ import annotations
 
 import logging
@@ -16,7 +16,7 @@ from product_app.app.memory.store.stitch import SpanStitcher
 from product_app.app.memory.store.lexical_search import LexicalSearcher
 from product_app.app.memory.store.merge import merge_windows
 from product_app.app.memory.store.repository import TraceStore
-from product_app.app.memory.store.rerank import AnchorCrossEncoder
+from product_app.app.memory.store.rerank import AnchorCrossEncoder, collapse_anchor_chunks
 from product_app.app.memory.store.select import select_windows, sort_by_time
 from product_app.app.memory.store.semantic import SemanticSearcher
 
@@ -108,6 +108,7 @@ class RetrievalPipeline:
                 planner_queries=list(plan.queries),
                 anchors=anchors,
             )
+            anchors = collapse_anchor_chunks(anchors)
             trace.extra["anchor_ce"] = 1
             trace.extra["anchor_ce_mode"] = "coverage"
             trace.extra["rrf_anchors"] = before
@@ -123,12 +124,9 @@ class RetrievalPipeline:
             windows = _drop_excluded(windows, exclude)
             windows = merge_windows(windows)
 
-            windows = select_windows(
-                query=query,
-                bundles=windows,
-                store=self._store,
-                user_id=user_id,
-            )
+            # CE relevance decides which windows to inject.
+            windows = select_windows(bundles=windows, limit=mem_cfg.bundle_top_k)
+            # Record time only affects display order (budget packing re-ranks by CE).
             windows = sort_by_time(windows)
             trace.linked_chains = 0
             trace.bundles = len(windows)

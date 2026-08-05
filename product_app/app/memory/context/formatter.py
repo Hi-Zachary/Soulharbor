@@ -237,8 +237,8 @@ def _lines_for_window(
             )
         day = _date_label(turn.created_at)
         star = "★ " if turn.is_anchor else ""
-        when = f"{day}：" if day else ""
-        lines.append(f"- {star}{when}用户曾说：{text}")
+        when = f"记录于 {day}：" if day else ""
+        lines.append(f"- {star}{when}用户：{text}")
         lines.append(
             f"  来源：conversation={window.conversation_id}, "
             f"message={turn.message_id}, pos={turn.position}"

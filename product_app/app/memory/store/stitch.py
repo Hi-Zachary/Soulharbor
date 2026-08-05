@@ -30,6 +30,10 @@ def _window_span(turns: Sequence[SpanTurn]) -> int:
     return max(positions) - min(positions) + 1
 
 
+def _span_sort_key(window: Span) -> tuple[float, float]:
+    return (float(window.rerank_score or 0.0), float(window.fused_score or 0.0))
+
+
 class SpanStitcher:
     """Turn ranked hits into multi-turn windows (adaptive walk or fixed neighbors)."""
 
@@ -76,7 +80,7 @@ class SpanStitcher:
         selected: Sequence[SpanTurn],
         threshold: float,
     ) -> bool:
-        """Include if cos(c, anchor) >= tau, or adjacent with shared entities."""
+        """Include if cos(c, probe_anchor) >= tau, or adjacent with shared entities."""
         if cosine(self._vector(candidate.content), self._vector(anchor.content)) >= threshold:
             return True
 
@@ -96,26 +100,29 @@ class SpanStitcher:
         rows = self._store.list_conversation_messages(user_id=user_id, conversation_id=conv_id)
         by_pos = {int(r["position"]): r for r in rows}
 
+        # Hit chunk is the expansion probe; full message is what we inject.
+        probe_anchor = SpanTurn(
+            message_id=hit.message_id,
+            conversation_id=conv_id,
+            role=hit.role,
+            position=hit.position,
+            content=hit.content,
+            created_at=hit.created_at,
+            is_anchor=True,
+        )
+
         if hit.position not in by_pos:
-            anchor = SpanTurn(
-                message_id=hit.message_id,
-                conversation_id=conv_id,
-                role=hit.role,
-                position=hit.position,
-                content=hit.content,
-                created_at=hit.created_at,
-                is_anchor=True,
-            )
             return Span(
                 bundle_id=f"c{conv_id}-{hit.message_id}",
                 conversation_id=conv_id,
                 anchor_ids=[hit.message_id],
-                messages=[anchor],
+                messages=[probe_anchor],
                 fused_score=float(hit.fused_score or 0.0),
+                rerank_score=float(hit.rerank_score or 0.0),
             )
 
-        anchor = _as_turn(by_pos[hit.position], conv_id, is_anchor=True)
-        selected: List[SpanTurn] = [anchor]
+        display_anchor = _as_turn(by_pos[hit.position], conv_id, is_anchor=True)
+        selected: List[SpanTurn] = [display_anchor]
         threshold = float(mem_cfg.stitch_cos_threshold)
         max_span = int(mem_cfg.stitch_max_span)
         max_msgs = int(mem_cfg.bundle_max_messages)
@@ -130,7 +137,7 @@ class SpanStitcher:
                 pos -= 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, anchor, selected, threshold):
+            if self._keep_neighbor(cand, probe_anchor, selected, threshold):
                 selected.insert(0, cand)
                 misses = 0
             else:
@@ -149,7 +156,7 @@ class SpanStitcher:
                 pos += 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, anchor, selected, threshold):
+            if self._keep_neighbor(cand, probe_anchor, selected, threshold):
                 selected.append(cand)
                 misses = 0
             else:
@@ -164,6 +171,7 @@ class SpanStitcher:
             anchor_ids=[hit.message_id],
             messages=selected,
             fused_score=float(hit.fused_score or 0.0),
+            rerank_score=float(hit.rerank_score or 0.0),
         )
 
     def _adaptive_windows(
@@ -178,8 +186,8 @@ class SpanStitcher:
         ]
         for w in windows:
             w.retrieval_queries = list(queries or [])
-        windows.sort(key=lambda w: w.fused_score, reverse=True)
-        # Keep all CE-selected anchors through stitch; MMR truncates later.
+        windows.sort(key=_span_sort_key, reverse=True)
+        # Keep all CE-selected anchors through stitch; Top-k truncates later.
         keep = max(
             int(mem_cfg.bundle_top_k) * 2,
             int(mem_cfg.anchor_top_k),
@@ -220,7 +228,8 @@ class SpanStitcher:
             for _lo, _hi, hits in merged:
                 by_id: Dict[int, SpanTurn] = {}
                 anchor_ids = sorted({h.message_id for h in hits})
-                best_score = max(h.fused_score for h in hits)
+                best_fused = max(float(h.fused_score or 0.0) for h in hits)
+                best_ce = max(float(h.rerank_score or 0.0) for h in hits)
                 for hit in hits:
                     for row in self._store.neighbor_messages(
                         user_id=user_id,
@@ -256,10 +265,11 @@ class SpanStitcher:
                         conversation_id=conv_id,
                         anchor_ids=anchor_ids,
                         messages=turns,
-                        fused_score=best_score,
+                        fused_score=best_fused,
+                        rerank_score=best_ce,
                         retrieval_queries=list(queries or []),
                     )
                 )
 
-        out.sort(key=lambda w: w.fused_score, reverse=True)
+        out.sort(key=_span_sort_key, reverse=True)
         return out[: int(mem_cfg.bundle_top_k)]

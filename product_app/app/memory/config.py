@@ -68,24 +68,10 @@ class MemorySettings:
     stitch_max_span: int = int(
         _env("MEMORY_STITCH_MAX_SPAN", "MEMORY_EXPAND_MAX_SPAN", default="12")
     )
-    evidence_selection_mode: str = os.environ.get("EVIDENCE_SELECTION_MODE", "mmr")
+    # Final evidence selection: CE Top-k (legacy aliases map here).
+    evidence_selection_mode: str = os.environ.get("EVIDENCE_SELECTION_MODE", "topk")
     cross_session_linking: bool = _b("MEMORY_CROSS_SESSION_LINKING", "0")
     link_score_threshold: float = float(os.environ.get("MEMORY_LINK_THRESHOLD", "0.22"))
-
-    # Decay-aware MMR
-    decay_enabled: bool = _b("MEMORY_DECAY_ENABLED", "1")
-    decay_w_min: float = float(os.environ.get("MEMORY_DECAY_W_MIN", "0.2"))
-    decay_tau_sec: float = float(os.environ.get("MEMORY_DECAY_TAU_SEC", str(90 * 86400)))
-    decay_alpha: float = float(os.environ.get("MEMORY_DECAY_ALPHA", "0.5"))
-    mmr_lambda: float = float(os.environ.get("MEMORY_MMR_LAMBDA", "0.7"))
-    mmr_recency_beta: float = float(os.environ.get("MEMORY_MMR_RECENCY_BETA", "0.8"))
-    mmr_recency_tau_sec: float = float(
-        os.environ.get("MEMORY_MMR_RECENCY_TAU_SEC", str(21 * 86400))
-    )
-    mmr_week_bonus: float = float(os.environ.get("MEMORY_MMR_WEEK_BONUS", "0.5"))
-    mmr_stop_on_negative: bool = _b("MEMORY_MMR_STOP_ON_NEGATIVE", "0")
-    reinforce_enabled: bool = _b("MEMORY_REINFORCE_ENABLED", "1")
-    reinforce_eta: float = float(os.environ.get("MEMORY_REINFORCE_ETA", "0.1"))
 
     context_token_budget: int = int(os.environ.get("MEMORY_CONTEXT_TOKEN_BUDGET", "1600"))
     semantic_top_k: int = int(os.environ.get("MEMORY_SEMANTIC_TOP_K", "50"))

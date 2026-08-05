@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import List, Optional, Sequence, Set
+from typing import Dict, List, Optional, Sequence, Set
 
 import torch
 
@@ -35,6 +35,25 @@ def _ce_query_set(original: str, planner_queries: Optional[Sequence[str]]) -> Li
     return out
 
 
+def collapse_anchor_chunks(anchors: List[RankedHit]) -> List[RankedHit]:
+    """One stitch per message: keep the highest-CE chunk as the probe."""
+    by_message: Dict[int, RankedHit] = {}
+    for hit in anchors:
+        previous = by_message.get(hit.message_id)
+        if previous is None or float(hit.rerank_score) > float(previous.rerank_score):
+            by_message[hit.message_id] = hit
+        elif (
+            float(hit.rerank_score) == float(previous.rerank_score)
+            and float(hit.fused_score) > float(previous.fused_score)
+        ):
+            by_message[hit.message_id] = hit
+    return sorted(
+        by_message.values(),
+        key=lambda hit: (float(hit.rerank_score), float(hit.fused_score)),
+        reverse=True,
+    )
+
+
 def _coverage_select_anchors(
     anchors: List[RankedHit],
     score_matrix: List[List[float]],
@@ -53,6 +72,8 @@ def _coverage_select_anchors(
         return []
     n_q = len(score_matrix)
     s_max = [max(float(score_matrix[j][i]) for j in range(n_q)) for i in range(n)]
+    for i, anchor in enumerate(anchors):
+        anchor.rerank_score = float(s_max[i])
 
     selected: List[int] = []
     seen: Set[int] = set()
@@ -132,7 +153,7 @@ class AnchorCrossEncoder:
         """
         Score RRF candidates with CE(q_j, text(a)) for q_j in
         {original} ∪ planner queries; keep coverage-selected top-K.
-        Preserves each hit's RRF fused_score.
+        Writes s_max onto each returned hit as rerank_score.
         """
         if not anchors:
             return []
@@ -150,6 +171,8 @@ class AnchorCrossEncoder:
 
         if len(queries) == 1:
             scores = score_matrix[0]
+            for i, anchor in enumerate(anchors):
+                anchor.rerank_score = float(scores[i])
             order = sorted(
                 range(len(anchors)),
                 key=lambda i: float(scores[i]),

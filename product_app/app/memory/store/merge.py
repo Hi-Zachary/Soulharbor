@@ -18,7 +18,11 @@ def merge_windows(windows: List[Span]) -> List[Span]:
     for conv_id, group in by_conversation.items():
         group = sorted(
             group,
-            key=lambda w: (min((t.position for t in w.messages), default=0), -w.fused_score),
+            key=lambda w: (
+                min((t.position for t in w.messages), default=0),
+                -(float(w.rerank_score or 0.0)),
+                -float(w.fused_score or 0.0),
+            ),
         )
         merged: List[Span] = []
         for window in group:
@@ -69,11 +73,18 @@ def merge_windows(windows: List[Span]) -> List[Span]:
                 conversation_id=conv_id,
                 anchor_ids=anchor_ids,
                 messages=messages,
-                fused_score=max(prev.fused_score, window.fused_score),
+                fused_score=max(float(prev.fused_score or 0.0), float(window.fused_score or 0.0)),
+                rerank_score=max(
+                    float(prev.rerank_score or 0.0),
+                    float(window.rerank_score or 0.0),
+                ),
                 retrieval_queries=queries,
             )
 
         merged_all.extend(merged)
 
-    merged_all.sort(key=lambda w: w.fused_score, reverse=True)
+    merged_all.sort(
+        key=lambda w: (float(w.rerank_score or 0.0), float(w.fused_score or 0.0)),
+        reverse=True,
+    )
     return merged_all
