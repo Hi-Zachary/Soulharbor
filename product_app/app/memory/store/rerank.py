@@ -76,18 +76,23 @@ def _coverage_select_anchors(
         anchor.rerank_score = float(s_max[i])
 
     selected: List[int] = []
-    seen: Set[int] = set()
+    seen_indices: Set[int] = set()
+    seen_message_ids: Set[int] = set()
 
     def _take(scores: List[float], k: int) -> None:
         if k <= 0:
             return
         order = sorted(range(n), key=lambda i: float(scores[i]), reverse=True)
         added = 0
-        for i in order:
-            if i in seen:
+        for index in order:
+            message_id = anchors[index].message_id
+            if index in seen_indices:
                 continue
-            selected.append(i)
-            seen.add(i)
+            if message_id in seen_message_ids:
+                continue
+            selected.append(index)
+            seen_indices.add(index)
+            seen_message_ids.add(message_id)
             added += 1
             if added >= k:
                 break
@@ -98,13 +103,17 @@ def _coverage_select_anchors(
 
     if len(selected) < keep:
         order = sorted(range(n), key=lambda i: s_max[i], reverse=True)
-        for i in order:
+        for index in order:
             if len(selected) >= keep:
                 break
-            if i in seen:
+            message_id = anchors[index].message_id
+            if index in seen_indices:
                 continue
-            selected.append(i)
-            seen.add(i)
+            if message_id in seen_message_ids:
+                continue
+            selected.append(index)
+            seen_indices.add(index)
+            seen_message_ids.add(message_id)
 
     if len(selected) > keep:
         guaranteed: Set[int] = set()
@@ -178,7 +187,17 @@ class AnchorCrossEncoder:
                 key=lambda i: float(scores[i]),
                 reverse=True,
             )
-            return [anchors[i] for i in order[:top_n]]
+            picked: List[RankedHit] = []
+            seen_message_ids: Set[int] = set()
+            for i in order:
+                mid = anchors[i].message_id
+                if mid in seen_message_ids:
+                    continue
+                picked.append(anchors[i])
+                seen_message_ids.add(mid)
+                if len(picked) >= top_n:
+                    break
+            return picked
 
         return _coverage_select_anchors(
             anchors,

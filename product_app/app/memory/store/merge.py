@@ -1,4 +1,4 @@
-"""Merge overlapping windows that sit next to each other in the same conversation."""
+"""Merge overlapping experience windows in the same conversation."""
 from __future__ import annotations
 
 from typing import Dict, List
@@ -8,6 +8,7 @@ from product_app.app.memory.models import Span, SpanTurn
 
 
 def merge_windows(windows: List[Span]) -> List[Span]:
+    """Merge windows that share a message position; leave pure-adjacent windows apart."""
     by_conversation: Dict[int, List[Span]] = {}
     for window in windows:
         by_conversation.setdefault(window.conversation_id, []).append(window)
@@ -34,9 +35,8 @@ def merge_windows(windows: List[Span]) -> List[Span]:
             prev_pos = {t.position for t in prev.messages}
             cur_pos = {t.position for t in window.messages}
             overlaps = bool(prev_pos & cur_pos)
-            adjacent = bool(prev_pos and cur_pos and min(cur_pos) <= max(prev_pos) + 1)
 
-            if not (overlaps or adjacent):
+            if not overlaps:
                 merged.append(window)
                 continue
 
@@ -47,6 +47,10 @@ def merge_windows(windows: List[Span]) -> List[Span]:
                     turns[turn.message_id] = turn
                 elif turn.is_anchor:
                     existing.is_anchor = True
+                    if turn.matched_chunk:
+                        existing.matched_chunk = turn.matched_chunk
+                elif turn.matched_chunk and not existing.matched_chunk:
+                    existing.matched_chunk = turn.matched_chunk
 
             messages = sorted(turns.values(), key=lambda t: t.position)
             if len(messages) > max_msgs:

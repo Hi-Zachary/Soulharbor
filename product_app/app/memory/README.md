@@ -16,14 +16,17 @@ Default read path:
 ```text
 Query Router
 → Dense + BM25 → RRF
-→ Multi-query Coverage CrossEncoder
+→ Multi-query Coverage CrossEncoder (≤ MEMORY_ANCHOR_CE_TOP_K, default 12)
 → Collapse same-message chunk anchors
 → Adaptive Stitch (probe = hit chunk; inject = full message)
 → Merge overlapping windows
-→ CE Top-k
-→ Pack by CE into token budget
+→ CE Top-k (≤ MEMORY_WINDOW_TOP_K, default 12)
+→ Pack by CE into token budget (skip oversized; continue with later windows)
 → Sort by record time for display
 → Inject
 ```
+
+`MEMORY_ANCHOR_CE_TOP_K` / `MEMORY_WINDOW_TOP_K` are candidate caps, not injection
+guarantees. Actual prompt size is controlled by `MEMORY_CONTEXT_TOKEN_BUDGET`.
 
 See `项目文档/03_详尽技术文档.md` §7–§8.

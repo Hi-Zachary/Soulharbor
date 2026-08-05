@@ -20,12 +20,26 @@ def trim_lines_to_budget(
     max_tokens: int,
     counter: Optional[Callable[[str], int]] = None,
 ) -> List[str]:
+    """Keep lines under budget; evidence body + source form an atomic unit."""
     kept: List[str] = []
     used = 0
-    for line in lines:
-        cost = estimate_tokens(line, counter)
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if (
+            line.startswith("- ")
+            and i + 1 < len(lines)
+            and str(lines[i + 1]).startswith("  来源：")
+        ):
+            unit = [line, lines[i + 1]]
+            step = 2
+        else:
+            unit = [line]
+            step = 1
+        cost = estimate_tokens("\n".join(unit), counter)
         if kept and used + cost > max_tokens:
             break
-        kept.append(line)
+        kept.extend(unit)
         used += cost
+        i += step
     return kept

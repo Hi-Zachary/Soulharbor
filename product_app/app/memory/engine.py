@@ -161,13 +161,14 @@ class MemoryEngine:
 
             budget = int(token_budget or mem_cfg.context_token_budget)
             counter = getattr(self._llm, "count_tokens", None) if self._llm else None
-            block = build_memory_block(
+            block, packed_count = build_memory_block(
                 bundles=windows,
                 profiles=profiles,
                 token_budget=budget,
                 token_counter=counter,
                 query=query,
             )
+            trace.extra["packed_window_count"] = packed_count
             if counter and block:
                 trace.memory_tokens = int(counter(block))
             else:

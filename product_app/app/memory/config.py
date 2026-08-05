@@ -44,6 +44,8 @@ class MemorySettings:
     split_query_enabled: bool = _b("MEMORY_SPLIT_QUERY_ENABLED", "1")
 
     # Multi-query coverage CE on raw anchors (formal final path).
+    # Candidate caps only: CE may keep up to 12 anchors, and post-merge Top-k may
+    # keep up to 12 windows. Token budget decides how many are actually injected.
     rrf_top_k: int = int(os.environ.get("MEMORY_RRF_TOP_K", "40"))
     anchor_ce_top_k: int = int(os.environ.get("MEMORY_ANCHOR_CE_TOP_K", "12"))
     anchor_ce_orig_top: int = int(os.environ.get("MEMORY_ANCHOR_CE_ORIG_TOP", "4"))
@@ -63,7 +65,6 @@ class MemorySettings:
             default="0.40",
         )
     )
-    stitch_entity_dist: int = int(os.environ.get("MEMORY_STITCH_ENTITY_DIST", "2"))
     stitch_max_misses: int = int(os.environ.get("MEMORY_STITCH_MAX_MISSES", "2"))
     stitch_max_span: int = int(
         _env("MEMORY_STITCH_MAX_SPAN", "MEMORY_EXPAND_MAX_SPAN", default="12")
@@ -79,7 +80,7 @@ class MemorySettings:
     anchor_top_k: int = int(
         _env("MEMORY_ANCHOR_TOP_K", "MEMORY_FOCUS_TOP_K", "MEMORY_SEED_TOP_K", default="8")
     )
-    bundle_top_k: int = int(os.environ.get("MEMORY_WINDOW_TOP_K", "6"))
+    bundle_top_k: int = int(os.environ.get("MEMORY_WINDOW_TOP_K", "12"))
     neighbor_before: int = int(os.environ.get("MEMORY_NEIGHBOR_BEFORE", "2"))
     neighbor_after: int = int(os.environ.get("MEMORY_NEIGHBOR_AFTER", "2"))
     bundle_max_messages: int = int(os.environ.get("MEMORY_WINDOW_MAX_MESSAGES", "8"))

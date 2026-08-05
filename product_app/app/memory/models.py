@@ -57,6 +57,7 @@ class SpanTurn:
     content: str
     created_at: int
     is_anchor: bool = False
+    matched_chunk: Optional[str] = None
 
 
 @dataclass
@@ -136,4 +137,5 @@ class RetrievalTrace:
             "stitch_mode": self.stitch_mode,
             "selection_mode": self.selection_mode,
             "linked_chains": self.linked_chains,
+            "extra": dict(self.extra),
         }

@@ -54,6 +54,56 @@ def _tail_snip(text: str, limit: int) -> str:
     return "…" + text[-limit:]
 
 
+def _flat(text: str) -> str:
+    return (text or "").strip().replace("\n", " ")
+
+
+def _snip_around_match(text: str, matched_chunk: str, *, max_chars: int) -> str:
+    """Keep a local span that includes the retrieval hit chunk."""
+    cleaned = _flat(text)
+    chunk = _flat(matched_chunk)
+    limit = max(64, int(max_chars))
+    if len(cleaned) <= limit:
+        return cleaned
+    if not chunk:
+        return _tail_snip(cleaned, limit)
+
+    idx = cleaned.find(chunk)
+    if idx < 0:
+        return _tail_snip(cleaned, limit)
+
+    chunk_len = len(chunk)
+    if chunk_len >= limit:
+        snippet = cleaned[idx : idx + limit]
+        prefix = "…" if idx > 0 else ""
+        suffix = "…" if idx + limit < len(cleaned) else ""
+        return f"{prefix}{snippet}{suffix}"
+
+    remaining = limit - chunk_len
+    left = remaining // 2
+    right = remaining - left
+    start = max(0, idx - left)
+    end = min(len(cleaned), idx + chunk_len + right)
+    if end - start < limit:
+        if start == 0:
+            end = min(len(cleaned), start + limit)
+        elif end == len(cleaned):
+            start = max(0, end - limit)
+
+    snippet = cleaned[start:end]
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(cleaned) else ""
+    return f"{prefix}{snippet}{suffix}"
+
+
+def _match_in_content(content: str, matched_chunk: Optional[str]) -> bool:
+    if not matched_chunk:
+        return False
+    if matched_chunk in content:
+        return True
+    return _flat(matched_chunk) in _flat(content)
+
+
 def _cache_key(text: str) -> str:
     return hashlib.sha1((text or "").encode("utf-8")).hexdigest()
 
@@ -185,20 +235,28 @@ def _pick_user_turns(
     query: str = "",
     max_msgs: int = 6,
 ) -> List[SpanTurn]:
-    """Keep user lines only; prefer query-relevant facts when the budget is tight."""
-    users = [t for t in window.messages if t.role == "user"]
+    """Keep user lines only; hard-retain anchors, then fill with relevant neighbors."""
+    users = [turn for turn in window.messages if turn.role == "user"]
     if not users:
         return []
-    limit = max(1, int(max_msgs))
-    if len(users) <= limit:
-        return users
 
-    ranked = sorted(
-        users,
-        key=lambda t: (-_relevance(t, query), 0 if t.is_anchor else 1, t.position),
-    )
-    chosen = ranked[:limit]
-    return sorted(chosen, key=lambda t: t.position)
+    limit = max(1, int(max_msgs))
+    anchors = [turn for turn in users if turn.is_anchor]
+    others = [turn for turn in users if not turn.is_anchor]
+
+    # Never silently drop anchors when a merged window carries many of them.
+    limit = max(limit, len(anchors))
+
+    chosen = list(anchors)
+    remaining = limit - len(chosen)
+    if remaining > 0:
+        others.sort(
+            key=lambda turn: _relevance(turn, query),
+            reverse=True,
+        )
+        chosen.extend(others[:remaining])
+
+    return sorted(chosen, key=lambda turn: turn.position)
 
 
 def _budget_for(turn: SpanTurn) -> int:
@@ -217,24 +275,31 @@ def _lines_for_window(
     lines: List[str] = []
     for turn in _pick_user_turns(window, query=query, max_msgs=max_msgs):
         budget = _budget_for(turn)
-        plan = (snip_plan or {}).get(id(turn))
-        if plan is not None:
-            sents, scores = plan
-            text = _snip_for_query(
+        if turn.is_anchor and _match_in_content(turn.content, turn.matched_chunk):
+            text = _snip_around_match(
                 turn.content,
-                query,
+                turn.matched_chunk or "",
                 max_chars=budget,
-                sentences=sents,
-                scores=scores,
             )
         else:
-            text = _snip_for_query(
-                turn.content,
-                query,
-                max_chars=budget,
-                embedder=embedder,
-                query_vec=query_vec,
-            )
+            plan = (snip_plan or {}).get(id(turn))
+            if plan is not None:
+                sents, scores = plan
+                text = _snip_for_query(
+                    turn.content,
+                    query,
+                    max_chars=budget,
+                    sentences=sents,
+                    scores=scores,
+                )
+            else:
+                text = _snip_for_query(
+                    turn.content,
+                    query,
+                    max_chars=budget,
+                    embedder=embedder,
+                    query_vec=query_vec,
+                )
         day = _date_label(turn.created_at)
         star = "★ " if turn.is_anchor else ""
         when = f"记录于 {day}：" if day else ""
@@ -267,6 +332,8 @@ def _prepare_snip_batch(
 
     for window in windows:
         for turn in _pick_user_turns(window, query=query):
+            if turn.is_anchor and _match_in_content(turn.content, turn.matched_chunk):
+                continue
             cleaned = (turn.content or "").strip().replace("\n", " ")
             if len(cleaned) <= _budget_for(turn):
                 continue
@@ -309,7 +376,8 @@ def format_sections(
         ordered = sorted(bundles, key=lambda w: (_earliest_ts(w), w.conversation_id))
         # Batch semantic snips only when at least one message exceeds the soft cap.
         needs_snip = any(
-            len((t.content or "").strip()) > _budget_for(t)
+            not (t.is_anchor and _match_in_content(t.content, t.matched_chunk))
+            and len((t.content or "").strip()) > _budget_for(t)
             for w in ordered
             for t in _pick_user_turns(w, query=query)
         )

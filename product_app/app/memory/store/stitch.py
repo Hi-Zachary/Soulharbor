@@ -8,7 +8,7 @@ from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
 from product_app.app.memory.models import Span, RankedHit, SpanTurn
 from product_app.app.memory.store.repository import TraceStore
-from product_app.app.memory.store.text_sim import blob_of, cosine, entities
+from product_app.app.memory.store.text_sim import cosine
 
 
 def _as_turn(row: dict, conversation_id: int, *, is_anchor: bool = False) -> SpanTurn:
@@ -71,28 +71,18 @@ class SpanStitcher:
         self._vec_cache[key] = vec
         return vec
 
-    # --- adaptive: cos primary + adjacent entity escape ---------------------
+    # --- adaptive: cosine continuity only -----------------------------------
 
     def _keep_neighbor(
         self,
         candidate: SpanTurn,
         anchor: SpanTurn,
-        selected: Sequence[SpanTurn],
         threshold: float,
     ) -> bool:
-        """Include if cos(c, probe_anchor) >= tau, or adjacent with shared entities."""
-        if cosine(self._vector(candidate.content), self._vector(anchor.content)) >= threshold:
-            return True
-
-        positions = [t.position for t in selected]
-        dist = min(
-            abs(candidate.position - min(positions)),
-            abs(candidate.position - max(positions)),
-        )
-        if dist > int(mem_cfg.stitch_entity_dist):
-            return False
-        window_ents = entities(blob_of(list(selected)))
-        return bool(entities(candidate.content) & window_ents)
+        return cosine(
+            self._vector(candidate.content),
+            self._vector(anchor.content),
+        ) >= threshold
 
     def _grow_from_hit(self, user_id: int, hit: RankedHit, query: str) -> Span:
         del query  # expansion no longer uses query-overlap terms
@@ -109,6 +99,7 @@ class SpanStitcher:
             content=hit.content,
             created_at=hit.created_at,
             is_anchor=True,
+            matched_chunk=hit.content,
         )
 
         if hit.position not in by_pos:
@@ -122,6 +113,7 @@ class SpanStitcher:
             )
 
         display_anchor = _as_turn(by_pos[hit.position], conv_id, is_anchor=True)
+        display_anchor.matched_chunk = hit.content
         selected: List[SpanTurn] = [display_anchor]
         threshold = float(mem_cfg.stitch_cos_threshold)
         max_span = int(mem_cfg.stitch_max_span)
@@ -137,7 +129,7 @@ class SpanStitcher:
                 pos -= 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, probe_anchor, selected, threshold):
+            if self._keep_neighbor(cand, probe_anchor, threshold):
                 selected.insert(0, cand)
                 misses = 0
             else:
@@ -156,7 +148,7 @@ class SpanStitcher:
                 pos += 1
                 continue
             cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, probe_anchor, selected, threshold):
+            if self._keep_neighbor(cand, probe_anchor, threshold):
                 selected.append(cand)
                 misses = 0
             else:
@@ -242,9 +234,14 @@ class SpanStitcher:
                         marked = mid in anchor_ids
                         existing = by_id.get(mid)
                         if existing is None:
-                            by_id[mid] = _as_turn(row, conv_id, is_anchor=marked)
+                            turn = _as_turn(row, conv_id, is_anchor=marked)
+                            if marked:
+                                turn.matched_chunk = hit.content
+                            by_id[mid] = turn
                         elif marked:
                             existing.is_anchor = True
+                            if not existing.matched_chunk:
+                                existing.matched_chunk = hit.content
 
                 turns = sorted(by_id.values(), key=lambda t: t.position)
                 if len(turns) > max_msgs:

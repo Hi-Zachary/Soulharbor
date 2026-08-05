@@ -102,17 +102,24 @@ class RetrievalPipeline:
                     exclude_message_ids=exclude,
                 )
 
-            before = len(anchors)
+            rrf_count = len(anchors)
+            # Formatter only injects user turns; drop assistant anchors before CE.
+            anchors = [hit for hit in anchors if hit.role == "user"]
             anchors = self._anchor_ce.select(
                 original_query=query,
                 planner_queries=list(plan.queries),
                 anchors=anchors,
             )
             anchors = collapse_anchor_chunks(anchors)
+            unique_messages = len({hit.message_id for hit in anchors})
+
             trace.extra["anchor_ce"] = 1
             trace.extra["anchor_ce_mode"] = "coverage"
-            trace.extra["rrf_anchors"] = before
+            trace.extra["rrf_anchors"] = rrf_count
+            trace.extra["rrf_anchor_count"] = rrf_count
             trace.extra["ce_anchors"] = len(anchors)
+            trace.extra["ce_anchor_count"] = len(anchors)
+            trace.extra["unique_message_anchor_count"] = unique_messages
 
             trace.semantic_hits = n_sem
             trace.lexical_hits = n_lex
@@ -122,10 +129,17 @@ class RetrievalPipeline:
                 user_id=user_id, anchors=anchors, queries=plan.queries
             )
             windows = _drop_excluded(windows, exclude)
-            windows = merge_windows(windows)
+            trace.extra["stitched_window_count"] = len(windows)
 
-            # CE relevance decides which windows to inject.
-            windows = select_windows(bundles=windows, limit=mem_cfg.bundle_top_k)
+            windows = merge_windows(windows)
+            trace.extra["merged_window_count"] = len(windows)
+
+            # Candidate ceiling from config (default 12); budget packing follows in builder.
+            windows = select_windows(
+                bundles=windows,
+                limit=mem_cfg.bundle_top_k,
+            )
+            trace.extra["topk_window_count"] = len(windows)
             # Record time only affects display order (budget packing re-ranks by CE).
             windows = sort_by_time(windows)
             trace.linked_chains = 0
