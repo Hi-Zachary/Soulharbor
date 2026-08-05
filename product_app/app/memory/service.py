@@ -11,7 +11,6 @@ from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.engine import MemoryEngine
 from product_app.app.memory.extract import build_summary_prompt
 from product_app.app.memory.inject import build_session_summary_block
-from product_app.app.memory.context.formatter import current_date_label
 from product_app.app.memory.session_context import (
     format_messages_slice,
     stored_to_chat_dicts,
@@ -21,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 def _memory_system_prefix() -> str:
-    today = current_date_label()
     return (
         "以下内容来自用户过往对话的检索结果，只是历史背景，不是用户本轮新说的话。\n\n"
         "能帮助回答当前问题时，请自然采用；\n"
@@ -30,8 +28,7 @@ def _memory_system_prefix() -> str:
         "和用户此刻说法冲突时，以当前说法为准；\n"
         "不要补充检索结果里没有的事实。\n\n"
         "经历证据前的日期是用户发送对应消息的时间，并非事件的发生时间。\n"
-        f"当前日期：{today}。\n"
-        "如果需要，请根据用户原话和消息记录日期判断事件的发生时间、先后顺序等。\n\n"
+        "如果需要，请根据用户原话、消息记录日期和记忆块中的当前日期判断事件的发生时间、先后顺序等。\n\n"
     )
 
 

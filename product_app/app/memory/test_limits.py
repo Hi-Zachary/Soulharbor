@@ -270,5 +270,98 @@ class TimezoneTests(unittest.TestCase):
                 self.assertEqual(current_date_label(), "2026-08-05")
 
 
+class EmptyMemoryBlockTests(unittest.TestCase):
+    def test_format_sections_empty_without_evidence(self) -> None:
+        from product_app.app.memory.context.builder import build_memory_block
+        from product_app.app.memory.context.formatter import format_sections
+
+        self.assertEqual(format_sections(bundles=[], profiles=[], query="x"), [])
+        block, packed = build_memory_block(
+            bundles=[],
+            profiles=[],
+            token_budget=1600,
+            query="x",
+        )
+        self.assertEqual(block, "")
+        self.assertEqual(packed, 0)
+
+
+class UpsertStaleChunkTests(unittest.TestCase):
+    def test_upsert_drops_stale_higher_index_chunks(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from product_app.app.memory.store.repository import TraceStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = TraceStore(Path(tmp) / "mem.db")
+            store.init()
+            store.upsert_chunks(
+                user_id=1,
+                conversation_id=1,
+                message_id=42,
+                role="user",
+                position=1,
+                created_at=100,
+                chunks=["chunk-0", "chunk-1", "chunk-2"],
+            )
+            store.upsert_chunks(
+                user_id=1,
+                conversation_id=1,
+                message_id=42,
+                role="user",
+                position=1,
+                created_at=200,
+                chunks=["new-only"],
+            )
+            with store._db() as conn:
+                rows = conn.execute(
+                    "SELECT chunk_index, content FROM memory_blocks "
+                    "WHERE message_id=42 ORDER BY chunk_index"
+                ).fetchall()
+            self.assertEqual([(int(r["chunk_index"]), r["content"]) for r in rows], [(0, "new-only")])
+
+
+class AnnUserOnlyTests(unittest.TestCase):
+    def test_ann_index_build_keeps_only_user_rows(self) -> None:
+        from product_app.app.memory.store.ann_index import UserAnnCache
+
+        cache = UserAnnCache()
+        rows = [
+            Block(
+                id=1,
+                user_id=1,
+                conversation_id=1,
+                message_id=1,
+                role="assistant",
+                position=1,
+                chunk_index=0,
+                content="assistant",
+                created_at=1,
+                embedding=[1.0, 0.0],
+            ),
+            Block(
+                id=2,
+                user_id=1,
+                conversation_id=1,
+                message_id=2,
+                role="user",
+                position=2,
+                chunk_index=0,
+                content="user",
+                created_at=2,
+                embedding=[0.0, 1.0],
+            ),
+        ]
+        user_rows = [r for r in rows if r.role == "user"]
+        built = cache.get_or_build(1, (1, 2, 3), user_rows, kind="user_only")
+        if built is None:
+            self.skipTest("faiss not installed in this environment")
+        self.assertEqual([r.role for r in built.rows], ["user"])
+        self.assertEqual(built.kind, "user_only")
+        self.assertIs(cache.peek(1, kind="user_only"), built)
+        self.assertIsNone(cache.peek(1, kind="legacy_mixed"))
+
+
 if __name__ == "__main__":
     unittest.main()

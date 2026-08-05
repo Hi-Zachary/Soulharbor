@@ -18,6 +18,7 @@ from product_app.app.memory.models import Block
 logger = logging.getLogger(__name__)
 
 _Fingerprint = Tuple[int, int, int]  # count, max_chunk_id, max_updated_at
+_CacheKey = Tuple[int, str]  # user_id, index kind (e.g. user_only)
 
 
 @dataclass
@@ -25,23 +26,26 @@ class _UserIndex:
     fingerprint: _Fingerprint
     index: object  # faiss.Index
     rows: List[Block]
+    kind: str = "user_only"
 
 
 class UserAnnCache:
-    """Process-local FAISS indexes keyed by user_id."""
+    """Process-local FAISS indexes keyed by (user_id, kind)."""
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._by_user: Dict[int, _UserIndex] = {}
+        self._by_key: Dict[_CacheKey, _UserIndex] = {}
         self._faiss = None
         self._faiss_error: Optional[str] = None
 
     def clear(self, user_id: Optional[int] = None) -> None:
         with self._lock:
             if user_id is None:
-                self._by_user.clear()
-            else:
-                self._by_user.pop(int(user_id), None)
+                self._by_key.clear()
+                return
+            uid = int(user_id)
+            for key in [k for k in self._by_key if k[0] == uid]:
+                self._by_key.pop(key, None)
 
     def _ensure_faiss(self):
         if self._faiss is not None:
@@ -82,36 +86,44 @@ class UserAnnCache:
         mat = mat / norms
         return mat, kept
 
-    def _build(self, fingerprint: _Fingerprint, rows: Sequence[Block]) -> Optional[_UserIndex]:
+    def _build(
+        self,
+        fingerprint: _Fingerprint,
+        rows: Sequence[Block],
+        *,
+        kind: str,
+    ) -> Optional[_UserIndex]:
         faiss = self._ensure_faiss()
         if faiss is None:
             return None
         mat, kept = self._matrix(rows)
         if mat.size == 0:
-            return _UserIndex(fingerprint=fingerprint, index=None, rows=[])
+            return _UserIndex(fingerprint=fingerprint, index=None, rows=[], kind=kind)
         index = faiss.IndexFlatIP(mat.shape[1])
         index.add(mat)
-        return _UserIndex(fingerprint=fingerprint, index=index, rows=kept)
+        return _UserIndex(fingerprint=fingerprint, index=index, rows=kept, kind=kind)
 
-    def peek(self, user_id: int) -> Optional[_UserIndex]:
+    def peek(self, user_id: int, *, kind: str = "user_only") -> Optional[_UserIndex]:
         with self._lock:
-            return self._by_user.get(int(user_id))
+            return self._by_key.get((int(user_id), str(kind)))
 
     def get_or_build(
         self,
         user_id: int,
         fingerprint: _Fingerprint,
         rows: Sequence[Block],
+        *,
+        kind: str = "user_only",
     ) -> Optional[_UserIndex]:
-        uid = int(user_id)
+        key = (int(user_id), str(kind))
         with self._lock:
-            cached = self._by_user.get(uid)
+            cached = self._by_key.get(key)
             if cached is not None and cached.fingerprint == fingerprint:
                 return cached
-            built = self._build(fingerprint, rows)
+            built = self._build(fingerprint, rows, kind=str(kind))
             if built is None:
                 return None
-            self._by_user[uid] = built
+            self._by_key[key] = built
             return built
 
     def search(
@@ -139,6 +151,8 @@ class UserAnnCache:
 
 
 _CACHE = UserAnnCache()
+# Drop any legacy mixed user+assistant indexes from older process lifetimes.
+_CACHE.clear()
 
 
 def ann_cache() -> UserAnnCache:

@@ -66,11 +66,18 @@ class SemanticSearcher:
         skip: Set[int],
     ) -> Optional[List[RankedHit]]:
         fingerprint = self._store.active_embedding_fingerprint(user_id)
+        kind = "user_only"
         # Need rows only when cache miss / fingerprint change.
-        cached = ann_cache().peek(user_id)
+        cached = ann_cache().peek(user_id, kind=kind)
         if cached is None or cached.fingerprint != fingerprint:
-            rows = self._store.list_active_with_embeddings(user_id, limit=5000)
-            user_index = ann_cache().get_or_build(user_id, fingerprint, rows)
+            rows = [
+                row
+                for row in self._store.list_active_with_embeddings(user_id, limit=5000)
+                if row.role == "user"
+            ]
+            user_index = ann_cache().get_or_build(
+                user_id, fingerprint, rows, kind=kind
+            )
         else:
             user_index = cached
 
@@ -79,7 +86,7 @@ class SemanticSearcher:
         if not user_index.rows:
             return []
 
-        # Over-fetch so exclude_message_ids / role filters still leave top_n user hits.
+        # Over-fetch so exclude_message_ids still leave top_n hits.
         overfetch = min(len(user_index.rows), max(top_n * 5, top_n + len(skip) + 8))
         scored = ann_cache().search(user_index, query_vec, top_k=overfetch)
 
@@ -87,7 +94,6 @@ class SemanticSearcher:
         for score, row in scored:
             if row.message_id in skip:
                 continue
-            # Long-term evidence injects user turns only; do not spend Dense slots on assistant.
             if row.role != "user":
                 continue
             if score <= 0:

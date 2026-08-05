@@ -202,12 +202,10 @@ class TraceStore:
         created_at: int,
         chunks: Sequence[str],
     ) -> List[int]:
+        pieces = [piece.strip() for piece in chunks if (piece or "").strip()]
         ids: List[int] = []
         with self._db() as conn:
-            for idx, piece in enumerate(chunks):
-                piece = (piece or "").strip()
-                if not piece:
-                    continue
+            for idx, piece in enumerate(pieces):
                 conn.execute(
                     "INSERT INTO memory_blocks("
                     "user_id, conversation_id, message_id, role, position, chunk_index, "
@@ -236,6 +234,30 @@ class TraceStore:
                 ).fetchone()
                 if row:
                     ids.append(int(row["id"]))
+
+            # Drop leftover higher-index chunks from a previous longer rewrite.
+            valid_count = len(pieces)
+            stale_rows = conn.execute(
+                "SELECT id FROM memory_blocks "
+                "WHERE user_id=? AND message_id=? AND chunk_index>=?",
+                (int(user_id), int(message_id), int(valid_count)),
+            ).fetchall()
+            for row in stale_rows:
+                chunk_id = int(row["id"])
+                conn.execute(
+                    "DELETE FROM memory_block_embeddings WHERE chunk_id=?",
+                    (chunk_id,),
+                )
+                conn.execute(
+                    "DELETE FROM memory_embed_retry WHERE chunk_id=?",
+                    (chunk_id,),
+                )
+            if stale_rows:
+                conn.execute(
+                    "DELETE FROM memory_blocks "
+                    "WHERE user_id=? AND message_id=? AND chunk_index>=?",
+                    (int(user_id), int(message_id), int(valid_count)),
+                )
         return ids
 
     def save_embedding(self, chunk_id: int, user_id: int, embedding: List[float]) -> None:
@@ -293,7 +315,10 @@ class TraceStore:
             return [self._to_chunk(r) for r in rows]
 
     def active_embedding_fingerprint(self, user_id: int) -> tuple:
-        """Cheap signature so the FAISS cache can detect ingest/forget without hooks."""
+        """Cheap signature so the FAISS cache can detect ingest/forget without hooks.
+
+        Counts user chunks only — matches the user_only ANN index.
+        """
         with self._db() as conn:
             row = conn.execute(
                 "SELECT COUNT(*) AS n, "
@@ -301,7 +326,7 @@ class TraceStore:
                 "COALESCE(MAX(e.updated_at), 0) AS max_upd "
                 "FROM memory_blocks c "
                 "JOIN memory_block_embeddings e ON e.chunk_id=c.id "
-                "WHERE c.user_id=? AND c.is_deleted=0",
+                "WHERE c.user_id=? AND c.is_deleted=0 AND c.role='user'",
                 (int(user_id),),
             ).fetchone()
             return (int(row["n"] or 0), int(row["max_id"] or 0), int(row["max_upd"] or 0))

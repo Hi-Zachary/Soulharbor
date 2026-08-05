@@ -380,11 +380,14 @@ def format_sections(
     query: str = "",
     embedder: Optional[MemoryEmbedder] = None,
 ) -> List[str]:
-    parts: List[str] = []
+    # No evidence → no <memory> block (avoids injecting a date-only shell).
+    if not bundles and not profiles:
+        return []
+
+    parts: List[str] = [f"当前日期：{current_date_label()}。"]
     model = embedder
     query_vec: Optional[List[float]] = None
     snip_plan: Dict[int, Tuple[List[str], List[float]]] = {}
-    parts.append(f"当前日期：{current_date_label()}。")
 
     if bundles:
         # Chronological injection: no explicit cross-session chain_id.
