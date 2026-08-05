@@ -3,7 +3,7 @@
   "method": "trace",
   "n_cases": 50,
   "data": "all_50.jsonl",
-  "run_dir": "/root/autodl-tmp/SoulHarbor/evaluate/memory/runs/qa_er_all50",
+  "run_dir": "/root/autodl-tmp/SoulHarbor/evaluate/memory/runs/qa_er_20260805_223327",
   "workers": 4,
   "qa_workers": 3,
   "chat_model": "MiniMax-M3",
