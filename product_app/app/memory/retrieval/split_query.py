@@ -20,6 +20,9 @@ class SplitQueryRetriever:
         queries: List[str],
         exclude_message_ids: Optional[Set[int]] = None,
     ) -> Tuple[List[RankedHit], int, int]:
+        queries = list(
+            dict.fromkeys(q.strip() for q in queries if q and str(q).strip())
+        )
         merged: Dict[int, RankedHit] = {}
         dense_total = 0
         sparse_total = 0

@@ -17,6 +17,7 @@ from product_app.app.memory.retrieval.pipeline import RetrievalPipeline
 from product_app.app.memory.retrieval.sufficiency import is_enough
 from product_app.app.memory.store.ingest import TraceIngestor
 from product_app.app.memory.store.repository import TraceStore
+from product_app.app.memory.token_utils import fallback_token_count
 
 logger = logging.getLogger(__name__)
 
@@ -31,25 +32,10 @@ class MemoryEngine:
         self._pipeline = RetrievalPipeline(self._store, self._profile, llm=llm)
         self._llm = llm
         self._last_trace: Optional[RetrievalTrace] = None
-        self._cmd_cache_text: str = ""
-        self._cmd_cache: Dict[str, str] = {"action": "none"}
 
     def set_llm(self, llm: Any) -> None:
         self._llm = llm
         self._pipeline.set_llm(llm)
-
-    def _parse_profile_command(self, user_text: str) -> Dict[str, str]:
-        text = (user_text or "").strip()
-        if not text or self._llm is None:
-            return {"action": "none"}
-        if text == self._cmd_cache_text:
-            return dict(self._cmd_cache)
-        from product_app.app.memory.profile.commands_llm import parse_user_command
-
-        cmd = parse_user_command(self._llm, user_text=text)
-        self._cmd_cache_text = text
-        self._cmd_cache = dict(cmd)
-        return dict(cmd)
 
     @property
     def last_trace(self) -> Optional[RetrievalTrace]:
@@ -131,20 +117,16 @@ class MemoryEngine:
             if not query:
                 return ""
 
-            if mem_cfg.profile_enabled and self._llm is not None:
-                try:
-                    if self._parse_profile_command(query).get("action") == "inspect":
-                        return self._inspect_block(user_id)
-                except Exception:
-                    logger.warning("profile inspect parse failed", exc_info=True)
-
             windows, trace = self._pipeline.run(
                 user_id=user_id,
                 query=query,
                 exclude_message_ids=exclude_message_ids,
             )
+            counter = getattr(self._llm, "count_tokens", None) if self._llm else None
             profiles = (
-                self._profile.list_all_for_context(user_id=user_id)
+                self._profile.list_all_for_context(
+                    user_id=user_id, token_counter=counter
+                )
                 if mem_cfg.profile_enabled
                 else []
             )
@@ -152,7 +134,6 @@ class MemoryEngine:
             trace.enough = is_enough(windows, profiles)
 
             budget = int(token_budget or mem_cfg.context_token_budget)
-            counter = getattr(self._llm, "count_tokens", None) if self._llm else None
             block, packed_count = build_memory_block(
                 bundles=windows,
                 profiles=profiles,
@@ -166,7 +147,7 @@ class MemoryEngine:
             if counter and block:
                 trace.memory_tokens = int(counter(block))
             else:
-                trace.memory_tokens = max(1, int(len(block) / 1.5)) if block else 0
+                trace.memory_tokens = fallback_token_count(block) if block else 0
 
             self._last_trace = trace
             if mem_cfg.observability:
@@ -176,15 +157,6 @@ class MemoryEngine:
             logger.warning("memory build_context failed user=%s", user_id, exc_info=True)
             self._last_trace = RetrievalTrace(fallback=True)
             return ""
-
-    def _inspect_block(self, user_id: int) -> str:
-        from product_app.app.memory.context.profile_formatter import render_user_profile
-
-        profiles = self._profile.list_all_for_context(user_id=user_id)
-        block = render_user_profile(profiles)
-        if block:
-            return block
-        return "<user_profile>\n（暂无长期画像条目）\n</user_profile>"
 
     def remember_explicit(self, *, user_id: int, content: str, source_message_ids: List[int]):
         return handle_remember(
@@ -218,7 +190,9 @@ class MemoryEngine:
         return self._store.count_active(user_id) + len(self._profile.list_active(user_id))
 
     def forget_all(self, user_id: int) -> int:
-        return self._store.forget_user(user_id)
+        trace_count = self._store.forget_user(user_id)
+        profile_count = self._profile.forget_all(user_id)
+        return int(trace_count) + int(profile_count)
 
     def inspect(self, user_id: int) -> Dict[str, object]:
         info = handle_inspect(repo=self._store, profile=self._profile, user_id=user_id)

@@ -89,9 +89,16 @@ class RetrievalPipeline:
             trace.subquery_count = len(plan.queries)
 
             if plan.mode == "split" and len(plan.queries) > 1:
+                retrieval_queries = list(
+                    dict.fromkeys(
+                        q.strip()
+                        for q in [query, *plan.queries]
+                        if q and str(q).strip()
+                    )
+                )
                 anchors, n_sem, n_lex = self._split.retrieve(
                     user_id=user_id,
-                    queries=plan.queries,
+                    queries=retrieval_queries,
                     exclude_message_ids=exclude,
                 )
             else:

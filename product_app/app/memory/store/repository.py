@@ -88,6 +88,14 @@ CREATE TABLE IF NOT EXISTS support_profile_llm_state (
   last_attempt_message_id INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS support_profile_maintenance_runs (
+  user_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+  completed_at INTEGER NOT NULL,
+  PRIMARY KEY(user_id, message_id, content_hash)
+);
+
 CREATE TABLE IF NOT EXISTS memory_backfill_checkpoint (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -483,10 +491,14 @@ class TraceStore:
                 "UPDATE memory_blocks SET is_deleted=1 WHERE user_id=?",
                 (int(user_id),),
             )
-            conn.execute("DELETE FROM support_profile_items WHERE user_id=?", (int(user_id),))
+            # Profiles are owned by ProfileService.forget_all / soft_delete_user.
             conn.execute("DELETE FROM support_profile_pending WHERE user_id=?", (int(user_id),))
             conn.execute(
                 "DELETE FROM support_profile_llm_state WHERE user_id=?", (int(user_id),)
+            )
+            conn.execute(
+                "DELETE FROM support_profile_maintenance_runs WHERE user_id=?",
+                (int(user_id),),
             )
             conn.execute("DELETE FROM memory_block_embeddings WHERE user_id=?", (int(user_id),))
             conn.execute("DELETE FROM memory_embed_retry WHERE user_id=?", (int(user_id),))
@@ -504,8 +516,6 @@ class TraceStore:
                 "SELECT message_id FROM support_profile_sources WHERE profile_id=?",
                 (pid,),
             ).fetchall()
-            if not sources:
-                continue
             still_alive = 0
             for src in sources:
                 hit = conn.execute(
@@ -515,7 +525,8 @@ class TraceStore:
                 ).fetchone()
                 if hit:
                     still_alive += 1
-            if still_alive == 0:
+            # No remaining live sources → soft-delete (including empty source list).
+            if still_alive == 0 and sources:
                 conn.execute(
                     "UPDATE support_profile_items SET status='deleted', updated_at=? WHERE id=?",
                     (_now(), pid),

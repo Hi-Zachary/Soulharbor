@@ -21,5 +21,9 @@ def handle_forget(
         result["profiles"] += profile.forget_matching(user_id, keyword)
         result["traces"] += repo.soft_delete_by_keyword(user_id, keyword)
     if message_id is not None:
+        orphaned = profile.remove_source_message(
+            user_id=user_id, message_id=int(message_id)
+        )
+        result["profiles"] += len(orphaned)
         result["traces"] += repo.soft_delete_message(user_id, message_id)
     return result

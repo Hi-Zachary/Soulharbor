@@ -119,6 +119,13 @@ class MemorySettings:
     def stitch_continuity_threshold(self) -> float:
         return self.stitch_cos_threshold
 
+    def __post_init__(self) -> None:
+        if int(self.context_token_budget) < int(self.profile_block_max_tokens):
+            raise ValueError(
+                "context token budget must cover profile block "
+                f"({self.context_token_budget} < {self.profile_block_max_tokens})"
+            )
+
 
 mem_cfg = MemorySettings()
 memory_settings = mem_cfg

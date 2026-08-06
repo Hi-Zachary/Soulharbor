@@ -11,10 +11,17 @@ from product_app.app.memory.profile.operations import (
     ProfileDecision,
     ProfileOperation,
 )
+from product_app.app.memory.token_utils import TokenCounter, truncate_by_tokens
 
 logger = logging.getLogger(__name__)
 
-PROFILE_MAINTAINER_SYSTEM = """\
+
+def build_maintainer_system(
+    *,
+    target_chars: int,
+    max_operations: int,
+) -> str:
+    return f"""\
 你是 SoulHarbor 的长期用户画像维护器。
 
 输入包括当前全部有效画像、本轮用户消息和最近对话。最近对话仅用于理解本轮用户消息。
@@ -26,7 +33,7 @@ PROFILE_MAINTAINER_SYSTEM = """\
 画像应当：
 - 简短、原子化并能够独立理解；
 - 每条只描述一个事实；
-- content 尽量不超过 40 个中文字符；
+- content 尽量不超过 {int(target_chars)} 个中文字符；
 - 不与已有画像重复。
 
 稳定背景、长期偏好、持续目标、重要关系、沟通方式和持续状态可以成为画像。
@@ -41,7 +48,7 @@ PROFILE_MAINTAINER_SYSTEM = """\
 - 优先更新已有画像，不要新增含义相近的画像。
 - 接近容量上限时，只保留对未来交流更有价值的画像。
 - 没有必要修改时返回空 operations。
-- 每轮最多输出 3 个操作。
+- 每轮最多输出 {int(max_operations)} 个操作。
 
 add 的 target_id 必须为空。
 update 和 delete 必须使用输入中的准确画像 id。
@@ -49,16 +56,20 @@ delete 的 content 必须为空。
 
 只输出合法 JSON：
 
-{
+{{
   "operations": [
-    {
+    {{
       "op": "add|update|delete",
       "target_id": "",
       "content": ""
-    }
+    }}
   ]
-}
+}}
 """
+
+
+# Default prompt kept for back-compat imports / tests.
+PROFILE_MAINTAINER_SYSTEM = build_maintainer_system(target_chars=40, max_operations=3)
 
 
 def build_profile_maintainer_payload(
@@ -69,6 +80,7 @@ def build_profile_maintainer_payload(
     max_active: int,
     block_tokens: int,
     max_block_tokens: int,
+    token_counter: TokenCounter = None,
 ) -> str:
     current_message = None
     previous_turns: list[dict] = []
@@ -83,12 +95,24 @@ def build_profile_maintainer_payload(
         if not content:
             continue
         if message_id == current_mid:
-            current_message = {"content": content[:600]}
+            current_message = {
+                "content": truncate_by_tokens(
+                    content,
+                    max_tokens=1200,
+                    counter=token_counter,
+                    keep_head_ratio=0.6,
+                )
+            }
             continue
         previous_turns.append(
             {
                 "role": str(turn.get("role") or ""),
-                "content": content[:400],
+                "content": truncate_by_tokens(
+                    content,
+                    max_tokens=400,
+                    counter=token_counter,
+                    keep_head_ratio=0.6,
+                ),
             }
         )
 
@@ -151,6 +175,9 @@ def propose_operations(
     max_active: int,
     block_tokens: int,
     max_block_tokens: int,
+    target_chars: int = 40,
+    max_operations: int = 3,
+    token_counter: TokenCounter = None,
 ) -> ProfileDecision:
     if llm is None:
         return ProfileDecision(operations=[])
@@ -162,15 +189,20 @@ def propose_operations(
             max_active=max_active,
             block_tokens=block_tokens,
             max_block_tokens=max_block_tokens,
+            token_counter=token_counter,
         )
     except ValueError:
         logger.warning("profile maintainer payload missing current user message")
         return ProfileDecision(operations=[])
+    system_text = build_maintainer_system(
+        target_chars=int(target_chars),
+        max_operations=int(max_operations),
+    )
     try:
         raw = llm.generate_structured(
             [{"role": "user", "content": payload}],
             max_new_tokens=512,
-            system_text=PROFILE_MAINTAINER_SYSTEM,
+            system_text=system_text,
         )
     except Exception:
         logger.warning("profile maintainer LLM failed", exc_info=True)

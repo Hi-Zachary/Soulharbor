@@ -262,6 +262,31 @@ class ProfileStore:
             )
             return int(cur.rowcount or 0) == 1
 
+    def soft_delete_user(self, user_id: int) -> int:
+        with self._write_tx() as conn:
+            now = int(time.time())
+            cur = conn.execute(
+                """
+                UPDATE support_profile_items
+                SET status='deleted', updated_at=?
+                WHERE user_id=? AND status='active'
+                """,
+                (now, int(user_id)),
+            )
+            conn.execute(
+                "DELETE FROM support_profile_pending WHERE user_id=?",
+                (int(user_id),),
+            )
+            conn.execute(
+                "DELETE FROM support_profile_llm_state WHERE user_id=?",
+                (int(user_id),),
+            )
+            conn.execute(
+                "DELETE FROM support_profile_maintenance_runs WHERE user_id=?",
+                (int(user_id),),
+            )
+            return int(cur.rowcount or 0)
+
     def soft_delete_matching(self, user_id: int, keyword: str) -> int:
         key = (keyword or "").strip()
         if not key:
@@ -287,29 +312,102 @@ class ProfileStore:
                     removed += int(cur.rowcount or 0)
         return removed
 
-    def soft_delete_by_key(self, user_id: int, tag: str, feature: str) -> int:
-        prefix = f"[{(tag or '').strip()}/{(feature or '').strip()}]"
-        if prefix == "[/]":
-            return 0
-        removed = 0
+    def remove_source_message(self, *, user_id: int, message_id: int) -> List[str]:
+        """Drop source links for a message; soft-delete profiles with no live sources."""
+        uid = int(user_id)
+        mid = int(message_id)
+        deleted_ids: List[str] = []
         with self._write_tx() as conn:
             rows = conn.execute(
-                "SELECT id, content FROM support_profile_items "
-                "WHERE user_id=? AND status='active'",
-                (int(user_id),),
+                """
+                SELECT DISTINCT s.profile_id AS profile_id
+                FROM support_profile_sources s
+                JOIN support_profile_items p ON p.id = s.profile_id
+                WHERE p.user_id = ? AND s.message_id = ?
+                """,
+                (uid, mid),
             ).fetchall()
-            for row in rows:
-                if str(row["content"]).startswith(prefix):
-                    cur = conn.execute(
-                        """
-                        UPDATE support_profile_items
-                        SET status='deleted', updated_at=?
-                        WHERE id=? AND user_id=? AND status='active'
-                        """,
-                        (int(time.time()), str(row["id"]), int(user_id)),
-                    )
-                    removed += int(cur.rowcount or 0)
-        return removed
+            affected = [str(r["profile_id"]) for r in rows]
+            conn.execute(
+                "DELETE FROM support_profile_sources WHERE message_id=?",
+                (mid,),
+            )
+            now = int(time.time())
+            for pid in affected:
+                live = conn.execute(
+                    """
+                    SELECT 1
+                    FROM support_profile_sources s
+                    JOIN memory_blocks b
+                      ON b.message_id = s.message_id
+                     AND b.user_id = ?
+                     AND b.is_deleted = 0
+                    WHERE s.profile_id = ?
+                    LIMIT 1
+                    """,
+                    (uid, pid),
+                ).fetchone()
+                if live:
+                    continue
+                cur = conn.execute(
+                    """
+                    UPDATE support_profile_items
+                    SET status='deleted', updated_at=?
+                    WHERE id=? AND user_id=? AND status='active'
+                    """,
+                    (now, pid, uid),
+                )
+                if int(cur.rowcount or 0) == 1:
+                    deleted_ids.append(pid)
+        return deleted_ids
+
+    def has_maintenance_run(
+        self, *, user_id: int, message_id: int, content_hash: str
+    ) -> bool:
+        with self._conn() as conn:
+            self._ensure_maintenance_runs(conn)
+            row = conn.execute(
+                """
+                SELECT 1 FROM support_profile_maintenance_runs
+                WHERE user_id=? AND message_id=? AND content_hash=?
+                LIMIT 1
+                """,
+                (int(user_id), int(message_id), str(content_hash)),
+            ).fetchone()
+            return row is not None
+
+    def record_maintenance_run(
+        self, *, user_id: int, message_id: int, content_hash: str
+    ) -> None:
+        with self._write_tx() as conn:
+            self._ensure_maintenance_runs(conn)
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO support_profile_maintenance_runs(
+                    user_id, message_id, content_hash, completed_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (
+                    int(user_id),
+                    int(message_id),
+                    str(content_hash),
+                    int(time.time()),
+                ),
+            )
+
+    @staticmethod
+    def _ensure_maintenance_runs(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS support_profile_maintenance_runs (
+              user_id INTEGER NOT NULL,
+              message_id INTEGER NOT NULL,
+              content_hash TEXT NOT NULL,
+              completed_at INTEGER NOT NULL,
+              PRIMARY KEY(user_id, message_id, content_hash)
+            )
+            """
+        )
 
     def update_content(self, user_id: int, profile_id: str, content: str) -> bool:
         with self._write_tx() as conn:

@@ -1,7 +1,6 @@
 """Assemble <user_profile> + <memory> injection with separate budgets."""
 from __future__ import annotations
 
-import logging
 from typing import Callable, List, Optional, Tuple
 
 from product_app.app.memory.config import mem_cfg
@@ -11,9 +10,6 @@ from product_app.app.memory.context.token_budget import trim_lines_to_budget
 from product_app.app.memory.models import Span, ProfileItem
 from product_app.app.memory.store.select import sort_by_time
 from product_app.app.memory.token_utils import count_tokens
-
-logger = logging.getLogger(__name__)
-
 
 def _ce_key(window: Span) -> tuple[float, float]:
     return (float(window.rerank_score or 0.0), float(window.fused_score or 0.0))
@@ -106,14 +102,12 @@ def build_memory_block(
     """
     profile_block = render_user_profile(profiles) if mem_cfg.profile_enabled else ""
     profile_tokens = count_tokens(profile_block, token_counter)
-    if profile_tokens > int(mem_cfg.profile_block_max_tokens):
-        logger.error(
-            "profile block exceeds limit: tokens=%s max=%s",
-            profile_tokens,
-            mem_cfg.profile_block_max_tokens,
+    if profile_block and profile_tokens > int(mem_cfg.profile_block_max_tokens):
+        # Capacity must already be repaired in ProfileStore before injection.
+        raise RuntimeError(
+            "profile invariant violated: "
+            f"tokens={profile_tokens} max={mem_cfg.profile_block_max_tokens}"
         )
-        profile_block = ""
-        profile_tokens = 0
 
     episodic_budget = max(0, int(token_budget) - profile_tokens)
     episodic_block, packed_count = build_episodic_memory_block(

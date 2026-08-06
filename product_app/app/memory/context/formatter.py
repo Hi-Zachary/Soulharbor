@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import re
 from datetime import datetime
+from html import escape
 from typing import Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
@@ -317,7 +318,8 @@ def _lines_for_window(
         day = _date_label(turn.created_at)
         star = "★ " if turn.is_anchor else ""
         when = f"记录于 {day}：" if day else ""
-        lines.append(f"- {star}{when}用户：{text}")
+        safe = escape(text, quote=False)
+        lines.append(f"- {star}{when}用户：{safe}")
         lines.append(
             f"  来源：conversation={window.conversation_id}, "
             f"message={turn.message_id}, pos={turn.position}"
