@@ -212,6 +212,7 @@ class RetrievalTrace:
     included_parent_message_ids: List[int] = field(default_factory=list)
     included_unit_ids: List[int] = field(default_factory=list)
     fragment_count: int = 0
+    token_count: int = 0
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_log_dict(self) -> Dict[str, Any]:
@@ -242,6 +243,7 @@ class RetrievalTrace:
             "included_parent_message_ids": list(self.included_parent_message_ids),
             "included_unit_ids": list(self.included_unit_ids),
             "fragment_count": self.fragment_count,
+            "token_count": self.token_count,
             "extra": dict(self.extra),
         }
 

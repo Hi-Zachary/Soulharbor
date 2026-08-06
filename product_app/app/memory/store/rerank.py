@@ -57,23 +57,34 @@ def collapse_anchor_chunks(anchors: List[RankedHit]) -> List[RankedHit]:
     )
 
 
-def _take_unique_messages(
+def _unit_key(hit: RankedHit) -> tuple[str, int]:
+    unit_type = str(hit.unit_type or "message")
+    unit_id = int(hit.unit_id or hit.message_id)
+    return unit_type, unit_id
+
+
+def _take_unique_units(
     anchors: List[RankedHit],
     limit: int,
 ) -> List[RankedHit]:
-    """Keep first occurrences up to ``limit`` distinct message_id values."""
+    """Keep first occurrences up to ``limit`` distinct index units."""
     if limit <= 0:
         return []
     selected: List[RankedHit] = []
-    seen: Set[int] = set()
+    seen: Set[tuple[str, int]] = set()
     for hit in anchors:
-        if hit.message_id in seen:
+        key = _unit_key(hit)
+        if key in seen:
             continue
         selected.append(hit)
-        seen.add(hit.message_id)
+        seen.add(key)
         if len(selected) >= limit:
             break
     return selected
+
+
+# Back-compat alias used by older tests / imports.
+_take_unique_messages = _take_unique_units
 
 
 def _select_direct(
@@ -82,7 +93,7 @@ def _select_direct(
     *,
     limit: int = 10,
 ) -> List[RankedHit]:
-    """Original-query CE Top-K, unique by message_id."""
+    """Original-query CE Top-K, unique by index unit (message or segment)."""
     if not anchors or limit <= 0:
         return []
     ranked_indices = sorted(
@@ -91,14 +102,15 @@ def _select_direct(
         reverse=True,
     )
     selected: List[RankedHit] = []
-    seen_message_ids: Set[int] = set()
+    seen_units: Set[tuple[str, int]] = set()
     for index in ranked_indices:
         hit = anchors[index]
-        if hit.message_id in seen_message_ids:
+        key = _unit_key(hit)
+        if key in seen_units:
             continue
         hit.rerank_score = float(scores[index])
         selected.append(hit)
-        seen_message_ids.add(hit.message_id)
+        seen_units.add(key)
         if len(selected) >= limit:
             break
     return selected
@@ -115,50 +127,57 @@ def _select_split(
     Per-subquery CE Top-K ∪ fill from original-query CE to ``limit``.
 
     score_matrix[0] = original query; score_matrix[1:] = up to 3 subqueries.
-    Final rerank_score = max CE across all queries for that chunk.
+    Final rerank_score = max CE across all queries for that unit.
+    Uniqueness is by index unit so adjacent segment cores can both survive.
     """
     if not anchors or not score_matrix or limit <= 0:
         return []
 
     original_scores = score_matrix[0]
     subquery_scores = score_matrix[1:]
+    n_sub = len(subquery_scores)
+    # Avoid impossible floors when query_count * per_subquery > keep.
+    effective_floor = int(per_subquery)
+    if n_sub > 0:
+        effective_floor = min(int(per_subquery), max(1, int(limit) // n_sub))
 
     def best_indices_for_scores(scores: List[float]) -> List[int]:
-        best_by_message: Dict[int, int] = {}
+        best_by_unit: Dict[tuple[str, int], int] = {}
         for index, hit in enumerate(anchors):
-            previous = best_by_message.get(hit.message_id)
+            key = _unit_key(hit)
+            previous = best_by_unit.get(key)
             if previous is None or float(scores[index]) > float(scores[previous]):
-                best_by_message[hit.message_id] = index
+                best_by_unit[key] = index
         return sorted(
-            best_by_message.values(),
+            best_by_unit.values(),
             key=lambda i: float(scores[i]),
             reverse=True,
         )
 
-    selected_by_message: Dict[int, int] = {}
+    selected_by_unit: Dict[tuple[str, int], int] = {}
 
     for scores in subquery_scores:
         ranked = best_indices_for_scores(scores)
-        for index in ranked[: max(0, int(per_subquery))]:
-            message_id = anchors[index].message_id
-            previous = selected_by_message.get(message_id)
+        for index in ranked[: max(0, effective_floor)]:
+            key = _unit_key(anchors[index])
+            previous = selected_by_unit.get(key)
             if previous is None:
-                selected_by_message[message_id] = index
+                selected_by_unit[key] = index
                 continue
             previous_max = max(float(row[previous]) for row in score_matrix)
             current_max = max(float(row[index]) for row in score_matrix)
             if current_max > previous_max:
-                selected_by_message[message_id] = index
+                selected_by_unit[key] = index
 
     for index in best_indices_for_scores(original_scores):
-        if len(selected_by_message) >= limit:
+        if len(selected_by_unit) >= limit:
             break
-        message_id = anchors[index].message_id
-        if message_id in selected_by_message:
+        key = _unit_key(anchors[index])
+        if key in selected_by_unit:
             continue
-        selected_by_message[message_id] = index
+        selected_by_unit[key] = index
 
-    selected_indices = list(selected_by_message.values())
+    selected_indices = list(selected_by_unit.values())
     for index in selected_indices:
         anchors[index].rerank_score = max(float(row[index]) for row in score_matrix)
 
@@ -192,7 +211,7 @@ class AnchorCrossEncoder:
         """
         Score RRF candidates with CE.
 
-        - Direct (no planner_queries): original-query Top-K by message_id.
+        - Direct (no planner_queries): original-query Top-K by index unit.
         - Split: each subquery Top-`per_subquery`, union, fill from original CE.
         """
         if not anchors:
@@ -216,7 +235,7 @@ class AnchorCrossEncoder:
                     else mem_cfg.anchor_ce_direct_k
                 )
             )
-            return _take_unique_messages(anchors, fallback_k)
+            return _take_unique_units(anchors, fallback_k)
 
         if not subs:
             limit = int(keep if keep is not None else mem_cfg.anchor_ce_direct_k)

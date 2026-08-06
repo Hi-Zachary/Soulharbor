@@ -73,6 +73,8 @@ class MemorySettings:
     rerank_max_length: int = int(os.environ.get("MEMORY_RERANK_MAX_LENGTH", "1024"))
     rerank_batch_size: int = int(os.environ.get("MEMORY_RERANK_BATCH_SIZE", "16"))
     observability: bool = _b("MEMORY_OBSERVABILITY", "1")
+    # When true, retrieval exceptions propagate instead of returning empty memory.
+    raise_retrieval_errors: bool = _b("MEMORY_RAISE_RETRIEVAL_ERRORS", "0")
 
     # Experience Rebuild (ER): adaptive / fixed stitch
     stitch_mode: str = _env("MEMORY_STITCH_MODE", "MEMORY_EXPAND_MODE", default="adaptive")

@@ -4,7 +4,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.context.fragment_formatter import format_fragment_sections, format_segment_region
@@ -444,6 +444,180 @@ class ProfileMaintainerTests(unittest.TestCase):
         prompt = build_maintainer_system(target_chars=40, max_operations=3, max_active=20)
         self.assertIn("助手的建议", prompt)
         self.assertIn("除非用户明确表示将长期采用", prompt)
+
+
+class PipelineHardeningTests(unittest.TestCase):
+    def test_assistant_anchor_reaches_formatter(self) -> None:
+        frag = RetrievedFragment(
+            fragment_type="message",
+            anchor_role="assistant",
+            parent_message_id=2,
+            score=0.8,
+            core_unit_ids=[2],
+            expanded_unit_ids=[],
+            reply_context_message_id=1,
+            earlier_user_message_ids=[],
+            later_user_message_ids=[],
+            omitted_before=False,
+            omitted_after=False,
+            token_count=20,
+            core_message_content="建议先联系导师",
+            core_contents=["建议先联系导师"],
+            reply_context_content="我想申请推免",
+        )
+        text = "\n".join(
+            format_fragment_sections(
+                bundles=[
+                    Span(
+                        bundle_id="f1",
+                        conversation_id=1,
+                        anchor_ids=[2],
+                        messages=[],
+                        fused_score=0.8,
+                        fragment=frag,
+                    )
+                ],
+                profiles=[],
+            )
+        )
+        self.assertIn("role=\"assistant\"", text)
+        self.assertIn("助手：建议先联系导师", text)
+        self.assertIn("我想申请推免", text)
+        self.assertNotIn("用户曾说", text)
+
+    def test_segment_anchor_does_not_restore_full_parent(self) -> None:
+        frag = RetrievedFragment(
+            fragment_type="segment",
+            anchor_role="assistant",
+            parent_message_id=10,
+            score=0.9,
+            core_unit_ids=[3],
+            expanded_unit_ids=[],
+            reply_context_message_id=None,
+            earlier_user_message_ids=[],
+            later_user_message_ids=[],
+            omitted_before=True,
+            omitted_after=True,
+            token_count=12,
+            core_contents=["中间核心片段"],
+        )
+        text = "\n".join(
+            format_fragment_sections(
+                bundles=[
+                    Span(
+                        bundle_id="f1",
+                        conversation_id=1,
+                        anchor_ids=[3],
+                        messages=[],
+                        fused_score=0.9,
+                        fragment=frag,
+                    )
+                ],
+                profiles=[],
+            )
+        )
+        self.assertIn("type=\"segment\"", text)
+        self.assertIn("【核心命中】", text)
+        self.assertIn("中间核心片段", text)
+        self.assertIn("……（前文省略）", text)
+        self.assertIn("……（后文省略）", text)
+        self.assertNotIn("完整父消息", text)
+
+    def test_first_and_last_segment_ellipsis_rules(self) -> None:
+        first = format_segment_region(
+            core_contents=["开头"],
+            expanded_before=[],
+            expanded_after=[],
+            omitted_before=False,
+            omitted_after=True,
+        )
+        last = format_segment_region(
+            core_contents=["结尾"],
+            expanded_before=[],
+            expanded_after=[],
+            omitted_before=True,
+            omitted_after=False,
+        )
+        self.assertNotIn("前文省略", first)
+        self.assertIn("后文省略", first)
+        self.assertIn("前文省略", last)
+        self.assertNotIn("后文省略", last)
+
+    def test_excluded_core_drops_fragment(self) -> None:
+        from product_app.app.memory.store.fragments import FragmentBuilder
+
+        store = MagicMock()
+        builder = FragmentBuilder(store, embedder=_FakeEmbedder())
+        hits = [
+            RankedHit(
+                chunk_id=1,
+                user_id=1,
+                conversation_id=1,
+                message_id=99,
+                role="user",
+                position=1,
+                content="live",
+                created_at=1,
+                unit_type="message",
+                unit_id=99,
+                parent_message_id=99,
+                rerank_score=0.9,
+            )
+        ]
+        frags = builder.build(
+            user_id=1,
+            hits=hits,
+            query="q",
+            exclude_message_ids={99},
+        )
+        self.assertEqual(frags, [])
+
+    def test_ce_score_preferred_over_fused(self) -> None:
+        from product_app.app.memory.store.fragments import hit_to_anchor
+
+        hit = RankedHit(
+            chunk_id=1,
+            user_id=1,
+            conversation_id=1,
+            message_id=1,
+            role="user",
+            position=1,
+            content="x",
+            created_at=1,
+            fused_score=0.2,
+            rerank_score=0.95,
+        )
+        anchor = hit_to_anchor(hit)
+        self.assertAlmostEqual(anchor.score, 0.95)
+
+    def test_retrieval_exception_is_visible_in_test_mode(self) -> None:
+        from dataclasses import replace
+
+        from product_app.app.memory.retrieval.pipeline import RetrievalPipeline
+
+        class BoomRouter:
+            def plan(self, query: str):
+                raise RuntimeError("planner boom")
+
+            def set_llm(self, llm):
+                return None
+
+        pipe = RetrievalPipeline(store=MagicMock(), profile=MagicMock())
+        pipe._router = BoomRouter()  # type: ignore[assignment]
+        with patch(
+            "product_app.app.memory.retrieval.pipeline.mem_cfg",
+            replace(mem_cfg, raise_retrieval_errors=True),
+        ):
+            with self.assertRaises(RuntimeError):
+                pipe.run(user_id=1, query="q")
+        with patch(
+            "product_app.app.memory.retrieval.pipeline.mem_cfg",
+            replace(mem_cfg, raise_retrieval_errors=False),
+        ):
+            windows, trace = pipe.run(user_id=1, query="q")
+        self.assertEqual(windows, [])
+        self.assertTrue(trace.fallback)
+        self.assertEqual(trace.extra.get("error_type"), "RuntimeError")
 
 
 if __name__ == "__main__":

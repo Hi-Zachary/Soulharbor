@@ -1,7 +1,7 @@
 """Expand message and segment retrieval anchors."""
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder, cosine_similarity
@@ -32,12 +32,14 @@ def expand_message_anchor(
     user_id: int,
     anchor: RetrievalAnchor,
     query: str,
+    exclude_message_ids: Optional[Set[int]] = None,
 ) -> tuple[List[int], List[str], List[int], List[str], Optional[int], str]:
     """Return earlier/later user message ids+contents and optional reply context."""
     msg = store.get_message(user_id=user_id, message_id=int(anchor.parent_message_id))
     if not msg:
         return [], [], [], [], None, ""
 
+    skip = {int(x) for x in (exclude_message_ids or set())}
     threshold = float(mem_cfg.expansion_similarity_threshold)
     max_before = int(mem_cfg.message_max_before_users)
     max_after = int(mem_cfg.message_max_after_users)
@@ -63,6 +65,8 @@ def expand_message_anchor(
         row = rows[0]
         scanned += 1
         pos = int(row["position"]) - 1
+        if int(row["message_id"]) in skip:
+            continue
         if str(row["role"]) != "user":
             continue
         if _similarity(query, str(row["content"]), embedder) < threshold:
@@ -85,6 +89,8 @@ def expand_message_anchor(
         row = rows[0]
         scanned += 1
         pos = int(row["position"]) + 1
+        if int(row["message_id"]) in skip:
+            continue
         if str(row["role"]) != "user":
             continue
         if _similarity(query, str(row["content"]), embedder) < threshold:
@@ -96,7 +102,7 @@ def expand_message_anchor(
     reply_content = ""
     if str(anchor.role) == "assistant":
         rid = msg.get("reply_to_message_id")
-        if rid:
+        if rid and int(rid) not in skip:
             reply = store.get_message(user_id=user_id, message_id=int(rid))
             if reply:
                 reply_id = int(reply["message_id"])
@@ -153,16 +159,21 @@ def expand_segment_anchor(
         if nxt and _similarity(query, str(nxt["content"]), embedder) >= threshold:
             after_ids.append(int(nxt["id"]))
 
-    included = before_ids + [int(s["id"]) for s in core] + after_ids
-    token_count = sum(count_tokens(str(by_id[sid]["content"])) for sid in included if sid in by_id)
+    included_ids = before_ids + [int(s["id"]) for s in core] + after_ids
+    included_indices = [
+        int(by_id[sid]["segment_index"]) for sid in included_ids if sid in by_id
+    ]
+    first_included = min(included_indices) if included_indices else first_idx
+    last_included = max(included_indices) if included_indices else last_idx
+    token_count = sum(count_tokens(str(by_id[sid]["content"])) for sid in included_ids if sid in by_id)
     return SegmentRegion(
         parent_message_id=int(parent_message_id),
         role=str(role),
         core_segment_ids=[int(s["id"]) for s in core],
         before_segment_ids=before_ids,
         after_segment_ids=after_ids,
-        omitted_before=first_idx > 0 and not before_ids,
-        omitted_after=last_idx < len(segments) - 1 and not after_ids,
+        omitted_before=first_included > 0,
+        omitted_after=last_included < len(segments) - 1,
         token_count=token_count,
         total_segment_count=len(segments),
     )

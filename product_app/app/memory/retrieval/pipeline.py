@@ -118,7 +118,12 @@ class RetrievalPipeline:
             trace.lexical_hits = n_lex
             trace.anchors = len(anchors)
 
-            fragments = self._fragments.build(user_id=user_id, hits=anchors, query=query)
+            fragments = self._fragments.build(
+                user_id=user_id,
+                hits=anchors,
+                query=query,
+                exclude_message_ids=exclude,
+            )
             for frag in fragments:
                 trace.expanded_segment_ids.extend(int(x) for x in frag.expanded_unit_ids)
                 if frag.reply_context_message_id:
@@ -132,17 +137,28 @@ class RetrievalPipeline:
                 )
 
             windows = _fragments_to_spans(fragments)
+            # Keep CE ordering for packing; chronological sort is applied at format time.
+            windows = sorted(
+                windows,
+                key=lambda w: (float(w.rerank_score or 0.0), float(w.fused_score or 0.0)),
+                reverse=True,
+            )
             windows = windows[: int(mem_cfg.max_retrieved_fragments)]
             trace.fragment_count = len(windows)
             trace.bundles = len(windows)
+            trace.token_count = sum(int(f.token_count) for f in fragments[: len(windows)])
             trace.extra["topk_window_count"] = len(windows)
             windows = sort_by_time(windows)
             trace.profile_hits = 0
             return windows, trace
 
-        except Exception:
+        except Exception as exc:
             logger.warning("memory retrieval failed for user=%s", user_id, exc_info=True)
             trace.fallback = True
+            trace.extra["error_type"] = type(exc).__name__
+            trace.extra["error_message"] = str(exc)
+            if bool(mem_cfg.raise_retrieval_errors):
+                raise
             return [], trace
         finally:
             trace.latency_ms = int((time.time() - started) * 1000)

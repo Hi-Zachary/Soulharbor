@@ -17,8 +17,10 @@ def _ce_key(window: Span) -> tuple[float, float]:
 
 
 def _format_bundle_lines(bundles: List[Span], *, query: str = "") -> List[str]:
-    if bundles and all(b.fragment is not None for b in bundles):
-        return format_fragment_sections(bundles=bundles, profiles=[])
+    # Prefer structured fragments whenever present; never re-infer from Span.messages.
+    fragment_bundles = [b for b in bundles if b.fragment is not None]
+    if fragment_bundles:
+        return format_fragment_sections(bundles=fragment_bundles, profiles=[])
     return format_sections(bundles=bundles, profiles=[], query=query)
 
 

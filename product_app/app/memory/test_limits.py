@@ -146,6 +146,32 @@ class AnchorCeSelectTests(unittest.TestCase):
         self.assertEqual(picked[0].content, "a1")
         self.assertAlmostEqual(picked[0].rerank_score, 0.95)
 
+    def test_select_direct_keeps_adjacent_segment_units(self) -> None:
+        anchors = [
+            RankedHit(
+                chunk_id=1, user_id=1, conversation_id=1, message_id=100,
+                role="assistant", position=1, content="seg-a", created_at=1,
+                unit_type="segment", unit_id=3, parent_message_id=100,
+                segment_id=3, segment_index=2,
+            ),
+            RankedHit(
+                chunk_id=2, user_id=1, conversation_id=1, message_id=100,
+                role="assistant", position=1, content="seg-b", created_at=1,
+                unit_type="segment", unit_id=4, parent_message_id=100,
+                segment_id=4, segment_index=3,
+            ),
+            RankedHit(
+                chunk_id=3, user_id=1, conversation_id=1, message_id=200,
+                role="user", position=2, content="other", created_at=2,
+                unit_type="message", unit_id=200, parent_message_id=200,
+            ),
+        ]
+        scores = [0.9, 0.85, 0.8]
+        picked = _select_direct(anchors, scores, limit=3)
+        self.assertEqual([(h.unit_type, h.unit_id) for h in picked], [
+            ("segment", 3), ("segment", 4), ("message", 200),
+        ])
+
     def test_select_split_union_then_fill_from_original(self) -> None:
         # 10 distinct messages; three subqueries each take top-3 with overlap.
         anchors = [_hit(i, f"m{i}") for i in range(1, 11)]

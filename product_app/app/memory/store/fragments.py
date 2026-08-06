@@ -1,7 +1,7 @@
 """Build retrieved fragments from ranked anchors."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
@@ -169,13 +169,16 @@ def trim_fragment_to_budget(fragment: RetrievedFragment) -> RetrievedFragment:
 def hit_to_anchor(hit: RankedHit) -> RetrievalAnchor:
     unit_type = str(hit.unit_type or "message")
     unit_id = int(hit.unit_id or hit.message_id)
+    # Prefer CE score when present so stitch/pack cannot fall back to RRF only.
+    ce_score = float(hit.rerank_score or 0.0)
+    fused = float(hit.fused_score or 0.0)
     return RetrievalAnchor(
         unit_type=unit_type,
         unit_id=unit_id,
         parent_message_id=int(hit.parent_message_id or hit.message_id),
         role=str(hit.role),
         content=str(hit.content),
-        score=max(float(hit.rerank_score or 0.0), float(hit.fused_score or 0.0)),
+        score=ce_score if ce_score > 0 else fused,
         source_query=str(hit.source_query or ""),
         chunk_id=int(hit.chunk_id),
         user_id=int(hit.user_id),
@@ -257,20 +260,41 @@ class FragmentBuilder:
         user_id: int,
         hits: List[RankedHit],
         query: str,
+        exclude_message_ids: Optional[Set[int]] = None,
     ) -> List[RetrievedFragment]:
-        anchors = collapse_parent_anchors([hit_to_anchor(h) for h in hits])
+        skip = {int(x) for x in (exclude_message_ids or set())}
+        # Drop hits whose core parent is excluded; never promote expansions to core.
+        kept_hits = [
+            h
+            for h in hits
+            if int(h.parent_message_id or h.message_id) not in skip
+            and int(h.message_id) not in skip
+        ]
+        anchors = collapse_parent_anchors([hit_to_anchor(h) for h in kept_hits])
         fragments: List[RetrievedFragment] = []
         for anchor in anchors[: int(mem_cfg.max_retrieved_fragments)]:
+            if int(anchor.parent_message_id) in skip:
+                continue
             if anchor.unit_type == "message":
                 fragments.append(
                     trim_fragment_to_budget(
-                        self._build_message_fragment(user_id=user_id, anchor=anchor, query=query)
+                        self._build_message_fragment(
+                            user_id=user_id,
+                            anchor=anchor,
+                            query=query,
+                            exclude_message_ids=skip,
+                        )
                     )
                 )
             else:
                 fragments.append(
                     trim_fragment_to_budget(
-                        self._build_segment_fragment(user_id=user_id, anchor=anchor, query=query)
+                        self._build_segment_fragment(
+                            user_id=user_id,
+                            anchor=anchor,
+                            query=query,
+                            exclude_message_ids=skip,
+                        )
                     )
                 )
         return fragments
@@ -281,6 +305,7 @@ class FragmentBuilder:
         user_id: int,
         anchor: RetrievalAnchor,
         query: str,
+        exclude_message_ids: Optional[Set[int]] = None,
     ) -> RetrievedFragment:
         msg = self._store.get_message(user_id=user_id, message_id=int(anchor.parent_message_id))
         core_content = str(msg["content"]) if msg else anchor.content
@@ -291,6 +316,7 @@ class FragmentBuilder:
                 user_id=user_id,
                 anchor=anchor,
                 query=query,
+                exclude_message_ids=exclude_message_ids,
             )
         )
         if str(anchor.role) == "assistant" and reply_id and not reply_content:
@@ -332,7 +358,9 @@ class FragmentBuilder:
         user_id: int,
         anchor: RetrievalAnchor,
         query: str,
+        exclude_message_ids: Optional[Set[int]] = None,
     ) -> RetrievedFragment:
+        skip = {int(x) for x in (exclude_message_ids or set())}
         core_segment_ids = (
             list(anchor.core_unit_ids)
             if anchor.core_unit_ids
@@ -361,7 +389,7 @@ class FragmentBuilder:
         if str(region.role) == "assistant":
             msg = self._store.get_message(user_id=user_id, message_id=int(anchor.parent_message_id))
             rid = (msg or {}).get("reply_to_message_id")
-            if rid:
+            if rid and int(rid) not in skip:
                 reply_id = int(rid)
                 reply_content = build_reply_context_segment_excerpt(
                     self._store,
