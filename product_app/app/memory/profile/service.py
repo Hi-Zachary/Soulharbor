@@ -6,11 +6,10 @@ import logging
 from pathlib import Path
 from typing import Any, List, Optional, Sequence
 
-from product_app.app.memory.context.profile_formatter import render_user_profile
 from product_app.app.memory.models import ProfileItem
 from product_app.app.memory.profile.operations import AppliedProfileChanges, ProfileOperation
 from product_app.app.memory.profile.repository import ProfileStore
-from product_app.app.memory.token_utils import TokenCounter, count_tokens
+from product_app.app.memory.token_utils import TokenCounter
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +180,6 @@ class ProfileService:
             limit=int(cfg.profile_max_active),
             order_by="created_at ASC, id ASC",
         )
-        current_block = render_user_profile(current_profiles)
 
         if already:
             operations: list[ProfileOperation] = []
@@ -192,8 +190,6 @@ class ProfileService:
                 recent_turns=recent_turns,
                 current_user_message_id=mid,
                 max_active=int(cfg.profile_max_active),
-                block_tokens=count_tokens(current_block, token_counter),
-                max_block_tokens=int(cfg.profile_block_max_tokens),
                 target_chars=int(cfg.profile_item_target_chars),
                 max_operations=int(cfg.profile_max_operations),
                 token_counter=token_counter,

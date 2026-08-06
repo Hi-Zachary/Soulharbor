@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from product_app.app.memory.context.builder import pack_windows_to_budget
 from product_app.app.memory.context.formatter import _date_label, current_date_label
-from product_app.app.memory.models import Block, RankedHit, Span, SpanTurn
+from product_app.app.memory.models import Block, RankedHit, RankedTurn, Span, SpanTurn
 from product_app.app.memory.store.lexical_search import LexicalSearcher
 from product_app.app.memory.store.merge import merge_windows
 from product_app.app.memory.store.rerank import (
@@ -35,6 +35,7 @@ def _turn(
         position=pos,
         content=content or f"msg-{mid}",
         created_at=1_700_000_000 + pos,
+        turn_id=mid,
         is_anchor=anchor,
         matched_chunk=f"msg-{mid}" if anchor else None,
     )
@@ -50,6 +51,7 @@ def _window(
     return Span(
         bundle_id=tag,
         conversation_id=conv,
+        anchor_turn_id=turns[0].turn_id if turns else 0,
         anchor_ids=[t.message_id for t in turns if t.is_anchor],
         messages=turns,
         fused_score=score,
@@ -100,6 +102,7 @@ def _hit(mid: int, content: str, *, role: str = "user", fused: float = 0.0) -> R
         position=1,
         content=content,
         created_at=0,
+        turn_id=mid,
         fused_score=fused,
     )
 
@@ -251,10 +254,10 @@ class MergeTests(unittest.TestCase):
 
 
 class RetrievalFilterTests(unittest.TestCase):
-    def test_lexical_search_skips_assistant_candidates(self) -> None:
+    def test_lexical_search_keeps_assistant_candidates(self) -> None:
         class FakeStore:
-            def list_active_with_embeddings(self, user_id, limit=5000):
-                del user_id, limit
+            def list_active_with_embeddings(self, user_id, limit=5000, role_scope="both"):
+                del user_id, limit, role_scope
                 return [
                     Block(
                         id=1,
@@ -266,6 +269,7 @@ class RetrievalFilterTests(unittest.TestCase):
                         chunk_index=0,
                         content="推免 导师 科研 推免 导师 科研 推免",
                         created_at=1,
+                        turn_id=10,
                         embedding=[0.1],
                     ),
                     Block(
@@ -278,14 +282,15 @@ class RetrievalFilterTests(unittest.TestCase):
                         chunk_index=0,
                         content="推免",
                         created_at=2,
+                        turn_id=11,
                         embedding=[0.1],
                     ),
                 ]
 
         hits = LexicalSearcher(FakeStore()).search(user_id=1, query="推免 导师", limit=10)
         self.assertTrue(hits)
-        self.assertTrue(all(h.role == "user" for h in hits))
-        self.assertEqual({h.message_id for h in hits}, {2})
+        self.assertEqual({h.role for h in hits}, {"assistant", "user"})
+        self.assertEqual({h.message_id for h in hits}, {1, 2})
 
 
 class CeFallbackTests(unittest.TestCase):
@@ -357,18 +362,26 @@ class UpsertStaleChunkTests(unittest.TestCase):
                 user_id=1,
                 conversation_id=1,
                 message_id=42,
+                turn_id=42,
                 role="user",
                 position=1,
                 created_at=100,
+                retrievable=True,
+                visible_to_user=True,
+                is_final=True,
                 chunks=["chunk-0", "chunk-1", "chunk-2"],
             )
             store.upsert_chunks(
                 user_id=1,
                 conversation_id=1,
                 message_id=42,
+                turn_id=42,
                 role="user",
                 position=1,
                 created_at=200,
+                retrievable=True,
+                visible_to_user=True,
+                is_final=True,
                 chunks=["new-only"],
             )
             with store._db() as conn:
@@ -379,8 +392,8 @@ class UpsertStaleChunkTests(unittest.TestCase):
             self.assertEqual([(int(r["chunk_index"]), r["content"]) for r in rows], [(0, "new-only")])
 
 
-class AnnUserOnlyTests(unittest.TestCase):
-    def test_ann_index_build_keeps_only_user_rows(self) -> None:
+class AnnMessageLevelTests(unittest.TestCase):
+    def test_ann_index_build_keeps_message_level_rows(self) -> None:
         from product_app.app.memory.store.ann_index import UserAnnCache
 
         cache = UserAnnCache()
@@ -395,6 +408,7 @@ class AnnUserOnlyTests(unittest.TestCase):
                 chunk_index=0,
                 content="assistant",
                 created_at=1,
+                turn_id=10,
                 embedding=[1.0, 0.0],
             ),
             Block(
@@ -407,17 +421,141 @@ class AnnUserOnlyTests(unittest.TestCase):
                 chunk_index=0,
                 content="user",
                 created_at=2,
+                turn_id=11,
                 embedding=[0.0, 1.0],
             ),
         ]
-        user_rows = [r for r in rows if r.role == "user"]
-        built = cache.get_or_build(1, (1, 2, 3), user_rows, kind="user_only")
+        built = cache.get_or_build(1, (1, 2, 3), rows, kind="message_level")
         if built is None:
             self.skipTest("faiss not installed in this environment")
-        self.assertEqual([r.role for r in built.rows], ["user"])
-        self.assertEqual(built.kind, "user_only")
-        self.assertIs(cache.peek(1, kind="user_only"), built)
+        self.assertEqual({r.role for r in built.rows}, {"assistant", "user"})
+        self.assertEqual(built.kind, "message_level")
+        self.assertIs(cache.peek(1, kind="message_level"), built)
         self.assertIsNone(cache.peek(1, kind="legacy_mixed"))
+
+
+class TurnAwareStitchTests(unittest.TestCase):
+    def test_same_turn_helpers_and_stitch_keep_assistant_anchor(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from product_app.app.memory.store.repository import TraceStore
+        from product_app.app.memory.store.stitch import SpanStitcher
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = TraceStore(Path(tmp) / "mem.db")
+            store.init()
+            store.upsert_chunks(
+                user_id=1,
+                conversation_id=7,
+                message_id=100,
+                turn_id=500,
+                role="user",
+                position=1,
+                created_at=100,
+                retrievable=True,
+                visible_to_user=True,
+                is_final=True,
+                chunks=["我想申请推免"],
+            )
+            store.upsert_chunks(
+                user_id=1,
+                conversation_id=7,
+                message_id=101,
+                turn_id=500,
+                role="assistant",
+                position=2,
+                created_at=101,
+                retrievable=True,
+                visible_to_user=True,
+                is_final=True,
+                chunks=["建议先联系导师并准备材料"],
+            )
+            store.upsert_chunks(
+                user_id=1,
+                conversation_id=7,
+                message_id=102,
+                turn_id=600,
+                role="user",
+                position=3,
+                created_at=102,
+                retrievable=True,
+                visible_to_user=True,
+                is_final=True,
+                chunks=["后续我开始整理科研经历"],
+            )
+            anchor_rows = store.list_turn_messages(user_id=1, conversation_id=7, turn_id=500)
+            self.assertEqual([row["message_id"] for row in anchor_rows], [100, 101])
+
+            stitcher = SpanStitcher(store)
+            windows = stitcher.stitch(
+                user_id=1,
+                anchors=[
+                    RankedTurn(
+                        conversation_id=7,
+                        turn_id=500,
+                        score=0.9,
+                        anchor_message_ids=[101],
+                        anchor_roles=["assistant"],
+                        hits=[_hit(101, "建议先联系导师并准备材料", role="assistant")],
+                    )
+                ],
+                queries=["导师建议"],
+            )
+            self.assertEqual(len(windows), 1)
+            self.assertEqual([t.role for t in windows[0].messages if t.segment == "anchor"], ["user", "assistant"])
+            self.assertEqual([t.role for t in windows[0].messages if t.segment != "anchor"], ["user"])
+
+    def test_hidden_nonfinal_assistant_not_listed(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from product_app.app.memory.store.repository import TraceStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = TraceStore(Path(tmp) / "mem.db")
+            store.init()
+            store.upsert_chunks(
+                user_id=1,
+                conversation_id=1,
+                message_id=1,
+                turn_id=1,
+                role="assistant",
+                position=1,
+                created_at=1,
+                retrievable=False,
+                visible_to_user=False,
+                is_final=False,
+                chunks=["内部草稿"],
+            )
+            self.assertEqual(store.list_active_with_embeddings(1), [])
+
+
+class FormatterTests(unittest.TestCase):
+    def test_noncontiguous_sections_render_without_trace_ids(self) -> None:
+        from product_app.app.memory.context.formatter import format_sections
+
+        window = Span(
+            bundle_id="w1",
+            conversation_id=1,
+            anchor_turn_id=10,
+            anchor_ids=[2],
+            messages=[
+                SpanTurn(message_id=1, conversation_id=1, role="user", position=1, content="之前的用户消息", created_at=1, turn_id=9, segment="earlier"),
+                SpanTurn(message_id=2, conversation_id=1, role="user", position=2, content="请给我推免建议", created_at=2, turn_id=10, segment="anchor", is_anchor=True, matched_chunk="推免建议"),
+                SpanTurn(message_id=3, conversation_id=1, role="assistant", position=3, content="建议先联系导师", created_at=3, turn_id=10, segment="anchor"),
+                SpanTurn(message_id=4, conversation_id=1, role="user", position=4, content="我之后会补材料", created_at=4, turn_id=11, segment="later"),
+            ],
+            fused_score=1.0,
+            rerank_score=1.0,
+        )
+        lines = format_sections(bundles=[window], profiles=[], query="导师建议")
+        text = "\n".join(lines)
+        self.assertIn("[较早的用户消息]", text)
+        self.assertIn("[检索命中的对话轮次]", text)
+        self.assertIn("[后续用户消息]", text)
+        self.assertIn("助手", text)
+        self.assertNotIn("message=", text)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ class SemanticSearcher:
         query: str,
         limit: int | None = None,
         exclude_message_ids: Optional[Set[int]] = None,
+        role_scope: str = "both",
     ) -> List[RankedHit]:
         text = (query or "").strip()
         if not text:
@@ -44,6 +45,7 @@ class SemanticSearcher:
                     query_vec=query_vec,
                     top_n=top_n,
                     skip=skip,
+                    role_scope=role_scope,
                 )
                 if hits is not None:
                     return hits
@@ -55,6 +57,7 @@ class SemanticSearcher:
             query_vec=query_vec,
             top_n=top_n,
             skip=skip,
+            role_scope=role_scope,
         )
 
     def _search_ann(
@@ -64,17 +67,15 @@ class SemanticSearcher:
         query_vec: List[float],
         top_n: int,
         skip: Set[int],
+        role_scope: str,
     ) -> Optional[List[RankedHit]]:
         fingerprint = self._store.active_embedding_fingerprint(user_id)
-        kind = "user_only"
-        # Need rows only when cache miss / fingerprint change.
+        kind = f"message_level:{role_scope}"
         cached = ann_cache().peek(user_id, kind=kind)
         if cached is None or cached.fingerprint != fingerprint:
-            rows = [
-                row
-                for row in self._store.list_active_with_embeddings(user_id, limit=5000)
-                if row.role == "user"
-            ]
+            rows = self._store.list_active_with_embeddings(
+                user_id, limit=5000, role_scope=role_scope
+            )
             user_index = ann_cache().get_or_build(
                 user_id, fingerprint, rows, kind=kind
             )
@@ -92,9 +93,7 @@ class SemanticSearcher:
 
         ranked: List[Tuple[float, RankedHit]] = []
         for score, row in scored:
-            if row.message_id in skip:
-                continue
-            if row.role != "user":
+            if row.parent_message_id in skip or row.message_id in skip:
                 continue
             if score <= 0:
                 continue
@@ -114,12 +113,13 @@ class SemanticSearcher:
         query_vec: List[float],
         top_n: int,
         skip: Set[int],
+        role_scope: str,
     ) -> List[RankedHit]:
         scored: List[Tuple[float, RankedHit]] = []
-        for row in self._store.list_active_with_embeddings(user_id, limit=5000):
-            if row.message_id in skip or not row.embedding:
-                continue
-            if row.role != "user":
+        for row in self._store.list_active_with_embeddings(
+            user_id, limit=5000, role_scope=role_scope
+        ):
+            if row.parent_message_id in skip or row.message_id in skip or not row.embedding:
                 continue
             score = cosine_similarity(query_vec, row.embedding)
             if score <= 0:
@@ -135,13 +135,21 @@ class SemanticSearcher:
 
     @staticmethod
     def _to_hit(row: Block) -> RankedHit:
+        unit_type = str(row.unit_type or "message")
+        unit_id = int(row.segment_id or row.message_id) if unit_type == "segment" else int(row.message_id)
         return RankedHit(
             chunk_id=row.id,
             user_id=row.user_id,
             conversation_id=row.conversation_id,
             message_id=row.message_id,
+            turn_id=row.turn_id,
             role=row.role,
             position=row.position,
             content=row.content,
             created_at=row.created_at,
+            unit_type=unit_type,
+            unit_id=unit_id,
+            parent_message_id=int(row.parent_message_id or row.message_id),
+            segment_id=int(row.segment_id or 0),
+            segment_index=int(row.segment_index),
         )

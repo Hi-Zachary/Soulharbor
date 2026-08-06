@@ -1,0 +1,38 @@
+{
+  "created_at": "20260806_143259",
+  "method": "trace",
+  "n_cases": 50,
+  "data": "../data/50cases.jsonl",
+  "run_dir": "/root/autodl-tmp/SoulHarbor/evaluate/memory/runs/qa_er_20260806_143259",
+  "workers": 4,
+  "qa_workers": 2,
+  "chat_model": "MiniMax-M3",
+  "methods": {
+    "trace": {
+      "n": 50,
+      "qa_accuracy": 0.9719999999999998,
+      "overgeneralization_rate": null,
+      "staleness_rate": 0.02564102564102564,
+      "content_f1": 0.4673535353535354,
+      "subclass_qa": {
+        "context_recall": 1.0,
+        "cross_session_integration": 0.9714285714285714,
+        "current_state": 0.9714285714285714,
+        "detail_recall": 0.95,
+        "hard_mixed": 0.9428571428571428,
+        "preference_recall": 0.9714285714285714,
+        "temporal_sequence": 1.0
+      },
+      "probe_qa": {
+        "context": 1.0,
+        "current_state": 0.9523809523809523,
+        "hard_mixed": 1.0,
+        "integration": 0.9358974358974359,
+        "preference": 1.0,
+        "recall": 1.0,
+        "staleness": 0.9824561403508771,
+        "temporal": 1.0
+      }
+    }
+  }
+}

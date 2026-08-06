@@ -15,6 +15,8 @@ def window_key(window: Span) -> str:
 
 
 def earliest_ts(window: Span) -> int:
+    if window.fragment is not None:
+        return int(window.fragment.created_at)
     if not window.messages:
         return 0
     return min(int(t.created_at) for t in window.messages)

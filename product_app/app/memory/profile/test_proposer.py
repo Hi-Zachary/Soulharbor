@@ -565,8 +565,6 @@ class ProfileMaintainTests(unittest.TestCase):
             recent_turns=[{"message_id": 1, "role": "user", "content": content}],
             current_user_message_id=1,
             max_active=20,
-            block_tokens=0,
-            max_block_tokens=640,
         )
         data = json.loads(payload)
         kept = data["current_user_message"]["content"]
@@ -574,9 +572,28 @@ class ProfileMaintainTests(unittest.TestCase):
         self.assertGreater(len(content), 600)
 
     def test_maintainer_prompt_uses_config_chars(self):
-        text = build_maintainer_system(target_chars=48, max_operations=2)
+        text = build_maintainer_system(
+            target_chars=48,
+            max_operations=2,
+            max_active=20,
+        )
         self.assertIn("48 个中文字符", text)
         self.assertIn("最多输出 2 个操作", text)
+        self.assertIn("最多保留 20 条有效画像", text)
+
+    def test_maintainer_payload_includes_remaining_slots(self):
+        payload = build_profile_maintainer_payload(
+            profiles=[],
+            recent_turns=[{"message_id": 1, "role": "user", "content": "你好"}],
+            current_user_message_id=1,
+            max_active=20,
+        )
+        capacity = json.loads(payload)["profile_capacity"]
+        self.assertEqual(capacity["active_count"], 0)
+        self.assertEqual(capacity["max_active"], 20)
+        self.assertEqual(capacity["remaining_slots"], 20)
+        self.assertNotIn("current_tokens", capacity)
+        self.assertNotIn("max_tokens", capacity)
 
     def test_fallback_token_count_cjk_conservative(self):
         self.assertEqual(fallback_token_count("你好世界"), 4)

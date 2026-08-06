@@ -9,7 +9,7 @@ import torch
 
 from product_app.app.config import settings
 from product_app.app.memory.config import mem_cfg
-from product_app.app.memory.models import RankedHit
+from product_app.app.memory.models import RankedHit, searchable_text
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +36,22 @@ def _ce_query_set(original: str, planner_queries: Optional[Sequence[str]]) -> Li
 
 
 def collapse_anchor_chunks(anchors: List[RankedHit]) -> List[RankedHit]:
-    """One stitch per message: keep the highest-CE chunk as the probe."""
-    by_message: Dict[int, RankedHit] = {}
+    """One CE hit per index unit."""
+    by_unit: Dict[tuple[str, int], RankedHit] = {}
     for hit in anchors:
-        previous = by_message.get(hit.message_id)
+        unit_type = str(hit.unit_type or "message")
+        unit_id = int(hit.unit_id or hit.message_id)
+        key = (unit_type, unit_id)
+        previous = by_unit.get(key)
         if previous is None or float(hit.rerank_score) > float(previous.rerank_score):
-            by_message[hit.message_id] = hit
+            by_unit[key] = hit
         elif (
             float(hit.rerank_score) == float(previous.rerank_score)
             and float(hit.fused_score) > float(previous.fused_score)
         ):
-            by_message[hit.message_id] = hit
+            by_unit[key] = hit
     return sorted(
-        by_message.values(),
+        by_unit.values(),
         key=lambda hit: (float(hit.rerank_score), float(hit.fused_score)),
         reverse=True,
     )
@@ -199,7 +202,7 @@ class AnchorCrossEncoder:
         if not queries:
             return []
 
-        texts = [(a.content or "").strip() for a in anchors]
+        texts = [searchable_text(a.role, a.content) for a in anchors]
         try:
             score_matrix = [self._score_text_pairs(q, texts) for q in queries]
         except Exception:

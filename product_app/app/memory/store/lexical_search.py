@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
-from product_app.app.memory.models import RankedHit
+from product_app.app.memory.models import RankedHit, searchable_text
 from product_app.app.memory.store.repository import TraceStore
 
 _TOKEN = re.compile(r"[\u4e00-\u9fff]|[A-Za-z0-9_]+")
@@ -51,6 +51,7 @@ class LexicalSearcher:
         query: str,
         limit: int | None = None,
         exclude_message_ids: Optional[Set[int]] = None,
+        role_scope: str = "both",
     ) -> List[RankedHit]:
         text = (query or "").strip()
         if not text:
@@ -64,13 +65,15 @@ class LexicalSearcher:
         top_n = int(limit or mem_cfg.lexical_top_k)
         rows = [
             row
-            for row in self._store.list_active_with_embeddings(user_id, limit=5000)
-            if row.message_id not in skip and row.role == "user"
+            for row in self._store.list_active_with_embeddings(
+                user_id, limit=5000, role_scope=role_scope
+            )
+            if row.parent_message_id not in skip and row.message_id not in skip
         ]
         if not rows:
             return []
 
-        docs = [_tokenize(row.content) for row in rows]
+        docs = [_tokenize(searchable_text(row.role, row.content)) for row in rows]
         doc_freq: Dict[str, int] = defaultdict(int)
         for terms in docs:
             for term in set(terms):
@@ -96,6 +99,12 @@ class LexicalSearcher:
                 score += idf * (freq * (_K1 + 1.0)) / denom
             if score <= 0:
                 continue
+            unit_type = str(row.unit_type or "message")
+            unit_id = (
+                int(row.segment_id or row.message_id)
+                if unit_type == "segment"
+                else int(row.message_id)
+            )
             scored.append(
                 (
                     score,
@@ -104,10 +113,16 @@ class LexicalSearcher:
                         user_id=row.user_id,
                         conversation_id=row.conversation_id,
                         message_id=row.message_id,
+                        turn_id=row.turn_id,
                         role=row.role,
                         position=row.position,
                         content=row.content,
                         created_at=row.created_at,
+                        unit_type=unit_type,
+                        unit_id=unit_id,
+                        parent_message_id=int(row.parent_message_id or row.message_id),
+                        segment_id=int(row.segment_id or 0),
+                        segment_index=int(row.segment_index),
                     ),
                 )
             )

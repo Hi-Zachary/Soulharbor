@@ -47,10 +47,15 @@ class MemoryEngine:
         user_id: int,
         conversation_id: int,
         message_id: int,
+        turn_id: int | None = None,
         role: str,
         content: str,
         position: int,
         created_at: int,
+        reply_to_message_id: int | None = None,
+        retrievable: bool = True,
+        visible_to_user: bool = True,
+        is_final: bool = True,
     ) -> int:
         if not mem_cfg.store_enabled or role not in ("user", "assistant"):
             return 0
@@ -60,10 +65,15 @@ class MemoryEngine:
                     user_id=int(user_id),
                     conversation_id=int(conversation_id),
                     message_id=int(message_id),
+                    turn_id=int(turn_id if turn_id is not None else message_id),
+                    reply_to_message_id=reply_to_message_id,
                     role=role,  # type: ignore[arg-type]
                     content=content,
                     position=int(position),
                     created_at=int(created_at),
+                    retrievable=bool(retrievable),
+                    visible_to_user=bool(visible_to_user),
+                    is_final=bool(is_final),
                 )
             )
             if (

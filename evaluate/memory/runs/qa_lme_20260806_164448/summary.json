@@ -1,0 +1,47 @@
+{
+  "created_at": "20260806_164448",
+  "method": "trace",
+  "benchmark": "soulharbor_mh_longmemeval_30",
+  "oracle": false,
+  "n_instances": 30,
+  "data": "/root/autodl-tmp/SoulHarbor/evaluate/memory/data/soulharbor_mh_longmemeval_30_bundle/soulharbor_mh_longmemeval_30.jsonl",
+  "run_dir": "/root/autodl-tmp/SoulHarbor/evaluate/memory/runs/qa_lme_20260806_164448",
+  "workers": 6,
+  "chat_model": "MiniMax-M3",
+  "qa": {
+    "overall_accuracy": 0.5,
+    "correct": 15,
+    "total": 30,
+    "by_capability": {
+      "abstention": 0.0,
+      "knowledge-update": 1.0,
+      "multi-session": 0.0,
+      "single-session-assistant": 0.0,
+      "single-session-preference": 0.75,
+      "single-session-user": 0.8,
+      "temporal-reasoning": 0.75
+    },
+    "by_memory_target": {
+      "both": 0.5,
+      "episodic": 0.4375,
+      "profile": 0.75
+    },
+    "by_evaluation_type": {
+      "abstention": 0.0,
+      "knowledge_update": 1.0,
+      "semantic_short_answer": 0.5384615384615384,
+      "structured_fields": 0.0,
+      "temporal_order": 0.75
+    },
+    "structured_field_accuracy": 0.6666666666666666,
+    "abstention_accuracy": 0.0
+  },
+  "retrieval": {
+    "message_recall_at_k": 0.6790123456790123,
+    "session_recall_at_k": 0.851851851851852,
+    "all_evidence_recall": 0.5185185185185185,
+    "any_evidence_recall": 0.8518518518518519,
+    "stale_only_rate": 0.0,
+    "n_answerable": 27
+  }
+}

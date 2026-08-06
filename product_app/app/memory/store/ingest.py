@@ -6,8 +6,8 @@ from typing import Optional
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import Turn
-from product_app.app.memory.store.chunker import chunk_text
+from product_app.app.memory.models import Turn, searchable_text
+from product_app.app.memory.store.index_units import build_index_units
 from product_app.app.memory.store.repository import TraceStore
 
 logger = logging.getLogger(__name__)
@@ -23,19 +23,48 @@ class TraceIngestor:
         if not body or message.role not in ("user", "assistant"):
             return 0
 
-        pieces = chunk_text(body)
-        chunk_ids = self._store.upsert_chunks(
+        has_segments, units, split_segments = build_index_units(
+            message_id=int(message.message_id),
+            role=str(message.role),
+            content=body,
+        )
+        chunk_ids = self._store.upsert_message_index(
             user_id=message.user_id,
             conversation_id=message.conversation_id,
             message_id=message.message_id,
+            turn_id=message.turn_id,
             role=message.role,
             position=message.position,
             created_at=message.created_at,
-            chunks=pieces,
+            content=body,
+            reply_to_message_id=message.reply_to_message_id,
+            retrievable=bool(message.retrievable),
+            visible_to_user=bool(message.visible_to_user),
+            is_final=bool(message.is_final),
+            has_segments=has_segments,
+            index_units=[
+                {
+                    "unit_type": unit.unit_type,
+                    "parent_message_id": unit.parent_message_id,
+                    "content": unit.content,
+                    "segment_index": unit.segment_index,
+                }
+                for unit in units
+            ],
+            segments=[
+                {
+                    "segment_index": seg.segment_index,
+                    "content": seg.content,
+                    "start_offset": seg.start_offset,
+                    "end_offset": seg.end_offset,
+                    "token_count": seg.token_count,
+                }
+                for seg in split_segments
+            ],
         )
 
-        for chunk_id, piece in zip(chunk_ids, pieces):
-            self._embed_or_retry(chunk_id, message.user_id, piece)
+        for chunk_id, unit in zip(chunk_ids, units):
+            self._embed_or_retry(chunk_id, message.user_id, unit.role, unit.content)
         return len(chunk_ids)
 
     def process_embed_retries(self, *, limit: int = 50) -> int:
@@ -46,7 +75,9 @@ class TraceIngestor:
         ok = 0
         for job in jobs:
             try:
-                vector = self._embedder.embed(job["content"])
+                vector = self._embedder.embed(
+                    searchable_text(str(job["role"]), str(job["content"]))
+                )
                 if vector:
                     self._store.save_embedding(job["chunk_id"], job["user_id"], vector)
                     ok += 1
@@ -58,9 +89,9 @@ class TraceIngestor:
                 self._store.enqueue_embed_retry(job["chunk_id"], job["user_id"], str(exc))
         return ok
 
-    def _embed_or_retry(self, chunk_id: int, user_id: int, text: str) -> None:
+    def _embed_or_retry(self, chunk_id: int, user_id: int, role: str, text: str) -> None:
         try:
-            vector = self._embedder.embed(text)
+            vector = self._embedder.embed(searchable_text(role, text))
             if vector:
                 self._store.save_embedding(chunk_id, user_id, vector)
             else:

@@ -1,33 +1,33 @@
-"""Stitch each retrieval anchor into a short conversation span."""
+"""Build non-contiguous windows from scored anchor turns."""
 from __future__ import annotations
 
-import hashlib
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional
 
 from product_app.app.memory.config import mem_cfg
-from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import Span, RankedHit, SpanTurn
+from product_app.app.memory.models import RankedTurn, Span, SpanTurn
 from product_app.app.memory.store.repository import TraceStore
-from product_app.app.memory.store.text_sim import cosine
 
 
-def _as_turn(row: dict, conversation_id: int, *, is_anchor: bool = False) -> SpanTurn:
+def _as_turn(
+    row: dict,
+    conversation_id: int,
+    *,
+    is_anchor: bool = False,
+    segment: str = "anchor",
+    matched_chunk: str | None = None,
+) -> SpanTurn:
     return SpanTurn(
         message_id=int(row["message_id"]),
         conversation_id=int(conversation_id),
+        turn_id=int(row.get("turn_id") or 0),
         role=str(row["role"]),
         position=int(row["position"]),
         content=str(row["content"]),
         created_at=int(row["created_at"]),
+        segment=str(segment),
         is_anchor=is_anchor,
+        matched_chunk=matched_chunk,
     )
-
-
-def _window_span(turns: Sequence[SpanTurn]) -> int:
-    if not turns:
-        return 0
-    positions = [t.position for t in turns]
-    return max(positions) - min(positions) + 1
 
 
 def _span_sort_key(window: Span) -> tuple[float, float]:
@@ -35,240 +35,84 @@ def _span_sort_key(window: Span) -> tuple[float, float]:
 
 
 class SpanStitcher:
-    """Turn ranked hits into multi-turn windows (adaptive walk or fixed neighbors)."""
+    """Build windows from ranked turns using same-turn completion and user-only expansion."""
 
-    def __init__(self, store: TraceStore, embedder: Optional[MemoryEmbedder] = None) -> None:
+    def __init__(self, store: TraceStore, embedder: Optional[object] = None) -> None:
+        del embedder
         self._store = store
-        self._embedder = embedder
-        self._vec_cache: Dict[str, List[float]] = {}
 
     def stitch(
         self,
         *,
         user_id: int,
-        anchors: List[RankedHit],
+        anchors: List[RankedTurn],
         queries: Optional[List[str]] = None,
     ) -> List[Span]:
-        if (mem_cfg.stitch_mode or "adaptive").lower() == "fixed":
-            return self._fixed_windows(user_id, anchors, queries)
-        return self._adaptive_windows(user_id, anchors, queries)
+        before = max(0, int(mem_cfg.neighbor_before))
+        after = max(0, int(mem_cfg.neighbor_after))
+        out: List[Span] = []
+        used_expansion_ids: set[int] = set()
 
-    # --- embeddings ---------------------------------------------------------
+        for anchor in sorted(anchors, key=lambda a: float(a.score), reverse=True):
+            conv_id = int(anchor.conversation_id)
+            turn_id = int(anchor.turn_id)
+            earlier = [
+                _as_turn(row, conv_id, segment="earlier")
+                for row in self._store.list_user_messages_before_turn(
+                    user_id=user_id,
+                    conversation_id=conv_id,
+                    turn_id=turn_id,
+                    limit=before,
+                )
+                if int(row["message_id"]) not in used_expansion_ids
+            ]
+            anchor_rows = self._store.list_turn_messages(
+                user_id=user_id,
+                conversation_id=conv_id,
+                turn_id=turn_id,
+            )
+            if not anchor_rows:
+                continue
+            anchor_turn = [
+                _as_turn(
+                    row,
+                    conv_id,
+                    is_anchor=int(row["message_id"]) in set(anchor.anchor_message_ids),
+                    segment="anchor",
+                    matched_chunk=self._matched_chunk(anchor.hits, int(row["message_id"])),
+                )
+                for row in anchor_rows
+            ]
+            later = [
+                _as_turn(row, conv_id, segment="later")
+                for row in self._store.list_user_messages_after_turn(
+                    user_id=user_id,
+                    conversation_id=conv_id,
+                    turn_id=turn_id,
+                    limit=after,
+                )
+                if int(row["message_id"]) not in used_expansion_ids
+            ]
+            used_expansion_ids.update(t.message_id for t in earlier + later)
+            messages = earlier + anchor_turn + later
+            out.append(
+                Span(
+                    bundle_id=f"c{conv_id}-t{turn_id}",
+                    conversation_id=conv_id,
+                    anchor_turn_id=turn_id,
+                    anchor_ids=list(anchor.anchor_message_ids),
+                    messages=messages,
+                    fused_score=float(anchor.score),
+                    rerank_score=float(anchor.score),
+                    retrieval_queries=list(queries or []),
+                )
+            )
+        out.sort(key=_span_sort_key, reverse=True)
+        return out
 
     @staticmethod
-    def _cache_key(text: str) -> str:
-        raw = text or ""
-        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
-        return f"{len(raw)}:{digest}"
-
-    def _vector(self, text: str) -> List[float]:
-        key = self._cache_key(text)
-        cached = self._vec_cache.get(key)
-        if cached is not None:
-            return cached
-        embedder = self._embedder or MemoryEmbedder.shared()
-        vec = list(embedder.embed(text or "") or [])
-        self._vec_cache[key] = vec
-        return vec
-
-    # --- adaptive: cosine continuity only -----------------------------------
-
-    def _keep_neighbor(
-        self,
-        candidate: SpanTurn,
-        anchor: SpanTurn,
-        threshold: float,
-    ) -> bool:
-        return cosine(
-            self._vector(candidate.content),
-            self._vector(anchor.content),
-        ) >= threshold
-
-    def _grow_from_hit(self, user_id: int, hit: RankedHit, query: str) -> Span:
-        del query  # expansion no longer uses query-overlap terms
-        conv_id = int(hit.conversation_id)
-        rows = self._store.list_conversation_messages(user_id=user_id, conversation_id=conv_id)
-        by_pos = {int(r["position"]): r for r in rows}
-
-        # Hit chunk is the expansion probe; full message is what we inject.
-        probe_anchor = SpanTurn(
-            message_id=hit.message_id,
-            conversation_id=conv_id,
-            role=hit.role,
-            position=hit.position,
-            content=hit.content,
-            created_at=hit.created_at,
-            is_anchor=True,
-            matched_chunk=hit.content,
-        )
-
-        if hit.position not in by_pos:
-            return Span(
-                bundle_id=f"c{conv_id}-{hit.message_id}",
-                conversation_id=conv_id,
-                anchor_ids=[hit.message_id],
-                messages=[probe_anchor],
-                fused_score=float(hit.fused_score or 0.0),
-                rerank_score=float(hit.rerank_score or 0.0),
-            )
-
-        display_anchor = _as_turn(by_pos[hit.position], conv_id, is_anchor=True)
-        display_anchor.matched_chunk = hit.content
-        selected: List[SpanTurn] = [display_anchor]
-        threshold = float(mem_cfg.stitch_cos_threshold)
-        max_span = int(mem_cfg.stitch_max_span)
-        max_msgs = int(mem_cfg.bundle_max_messages)
-        max_misses = int(mem_cfg.stitch_max_misses)
-
-        # walk left
-        misses = 0
-        pos = hit.position - 1
-        while pos >= 1 and len(selected) < max_msgs and _window_span(selected) < max_span:
-            row = by_pos.get(pos)
-            if row is None:
-                pos -= 1
-                continue
-            cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, probe_anchor, threshold):
-                selected.insert(0, cand)
-                misses = 0
-            else:
-                misses += 1
-                if misses >= max_misses:
-                    break
-            pos -= 1
-
-        # walk right
-        misses = 0
-        pos = hit.position + 1
-        last_pos = max(by_pos) if by_pos else hit.position
-        while pos <= last_pos and len(selected) < max_msgs and _window_span(selected) < max_span:
-            row = by_pos.get(pos)
-            if row is None:
-                pos += 1
-                continue
-            cand = _as_turn(row, conv_id)
-            if self._keep_neighbor(cand, probe_anchor, threshold):
-                selected.append(cand)
-                misses = 0
-            else:
-                misses += 1
-                if misses >= max_misses:
-                    break
-            pos += 1
-
-        return Span(
-            bundle_id=f"c{conv_id}-{hit.message_id}",
-            conversation_id=conv_id,
-            anchor_ids=[hit.message_id],
-            messages=selected,
-            fused_score=float(hit.fused_score or 0.0),
-            rerank_score=float(hit.rerank_score or 0.0),
-        )
-
-    def _adaptive_windows(
-        self,
-        user_id: int,
-        anchors: List[RankedHit],
-        queries: Optional[List[str]],
-    ) -> List[Span]:
-        joined = " ".join(queries or [])
-        windows = [
-            self._grow_from_hit(user_id, hit, joined or hit.content) for hit in anchors
-        ]
-        for w in windows:
-            w.retrieval_queries = list(queries or [])
-        windows.sort(key=_span_sort_key, reverse=True)
-        # Keep all CE-selected anchors through stitch; Top-k truncates later.
-        keep = max(
-            int(mem_cfg.bundle_top_k) * 2,
-            int(mem_cfg.anchor_top_k),
-            int(mem_cfg.anchor_ce_top_k),
-            len(windows),
-        )
-        return windows[:keep]
-
-    # --- fixed neighbor windows ---------------------------------------------
-
-    def _fixed_windows(
-        self,
-        user_id: int,
-        anchors: List[RankedHit],
-        queries: Optional[List[str]],
-    ) -> List[Span]:
-        before = int(mem_cfg.neighbor_before)
-        after = int(mem_cfg.neighbor_after)
-        max_msgs = int(mem_cfg.bundle_max_messages)
-
-        ranges: Dict[int, List[Tuple[int, int, RankedHit]]] = {}
-        for hit in anchors:
-            ranges.setdefault(hit.conversation_id, []).append(
-                (hit.position - before, hit.position + after, hit)
-            )
-
-        out: List[Span] = []
-        for conv_id, items in ranges.items():
-            items.sort(key=lambda x: x[0])
-            merged: List[Tuple[int, int, List[RankedHit]]] = []
-            for lo, hi, hit in items:
-                if merged and lo <= merged[-1][1] + 1:
-                    prev_lo, prev_hi, hits = merged[-1]
-                    merged[-1] = (prev_lo, max(prev_hi, hi), hits + [hit])
-                else:
-                    merged.append((lo, hi, [hit]))
-
-            for _lo, _hi, hits in merged:
-                by_id: Dict[int, SpanTurn] = {}
-                anchor_ids = sorted({h.message_id for h in hits})
-                best_fused = max(float(h.fused_score or 0.0) for h in hits)
-                best_ce = max(float(h.rerank_score or 0.0) for h in hits)
-                for hit in hits:
-                    for row in self._store.neighbor_messages(
-                        user_id=user_id,
-                        conversation_id=conv_id,
-                        position=hit.position,
-                        before=before,
-                        after=after,
-                    ):
-                        mid = int(row["message_id"])
-                        marked = mid in anchor_ids
-                        existing = by_id.get(mid)
-                        if existing is None:
-                            turn = _as_turn(row, conv_id, is_anchor=marked)
-                            if marked:
-                                turn.matched_chunk = hit.content
-                            by_id[mid] = turn
-                        elif marked:
-                            existing.is_anchor = True
-                            if not existing.matched_chunk:
-                                existing.matched_chunk = hit.content
-
-                turns = sorted(by_id.values(), key=lambda t: t.position)
-                if len(turns) > max_msgs:
-                    anchor_turns = [t for t in turns if t.is_anchor]
-                    neighbor_turns = [t for t in turns if not t.is_anchor]
-                    if not anchor_turns:
-                        turns = turns[:max_msgs]
-                    else:
-                        center = sum(t.position for t in anchor_turns) / len(anchor_turns)
-                        neighbor_limit = max(0, max_msgs - len(anchor_turns))
-                        neighbor_turns.sort(key=lambda t: abs(t.position - center))
-                        turns = sorted(
-                            anchor_turns + neighbor_turns[:neighbor_limit],
-                            key=lambda t: t.position,
-                        )
-
-                out.append(
-                    Span(
-                        bundle_id=f"c{conv_id}-" + "-".join(str(i) for i in anchor_ids[:4]),
-                        conversation_id=conv_id,
-                        anchor_ids=anchor_ids,
-                        messages=turns,
-                        fused_score=best_fused,
-                        rerank_score=best_ce,
-                        retrieval_queries=list(queries or []),
-                    )
-                )
-
-        out.sort(key=_span_sort_key, reverse=True)
-        return out[: int(mem_cfg.bundle_top_k)]
+    def _matched_chunk(hits: List[object], message_id: int) -> str | None:
+        for hit in hits:
+            if int(getattr(hit, "message_id", 0)) == int(message_id):
+                return str(getattr(hit, "content", "") or "")
+        return None

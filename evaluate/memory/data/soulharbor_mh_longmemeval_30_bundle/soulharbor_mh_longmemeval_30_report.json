@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0-longmemeval-compatible",
+  "instance_count": 30,
+  "question_type_counts": {
+    "single-session-user": 5,
+    "single-session-assistant": 4,
+    "abstention": 3,
+    "temporal-reasoning": 4,
+    "single-session-preference": 4,
+    "multi-session": 5,
+    "knowledge-update": 5
+  },
+  "category_counts": {
+    "academic_stress": 3,
+    "workplace_burnout": 3,
+    "relationships_boundaries": 3,
+    "adjustment_loneliness": 3,
+    "caregiving_stress": 3,
+    "grief_and_change": 3,
+    "performance_anxiety": 3,
+    "health_routine": 3,
+    "career_uncertainty": 3,
+    "creative_overload": 3
+  },
+  "session_count_total": 1070,
+  "sessions_per_instance": {
+    "min": 34,
+    "max": 38,
+    "avg": 35.667
+  },
+  "message_count_total": 2504,
+  "messages_per_instance_avg": 83.467,
+  "evidence_messages_per_question_avg": 1.533,
+  "mean_evidence_session_relative_position": 0.42,
+  "all_questions_open_ended": true,
+  "all_dates_sorted": true,
+  "all_question_dates_after_history": true,
+  "all_evidence_ids_valid": true,
+  "explicit_label_language_removed": true,
+  "whole_session_duplicate_count": 6,
+  "sha256_jsonl": "6338e4c2c20cc5dd050b7f575c6fe4b3a316540afc8f65fb108ce9fe3689e534",
+  "sha256_json": "a3999d65678605f0b820f0227c3ad69affbb160f4caae83d770448241b567cd5",
+  "sha256_oracle": "e03507c4fc5765c2db1d303d7a19887560a8cf6b593b26ef18d528cb46efcc06",
+  "sha256_profile_gold": "e963d0fbb0b301dada0590af6743f09cf6902b96dc49b886a5bb47c86b613be7"
+}

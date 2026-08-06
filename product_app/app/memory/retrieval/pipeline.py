@@ -1,4 +1,4 @@
-"""Retrieval pipeline: plan → hybrid → CE → collapse → stitch → merge → Top-k → chrono."""
+"""Retrieval pipeline: planner → role-scoped hybrid → CE → fragments → Top-k."""
 from __future__ import annotations
 
 import logging
@@ -7,49 +7,48 @@ from typing import Any, List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import Span, RetrievalTrace
+from product_app.app.memory.models import RankedHit, RoutedQuery, RetrievalTrace, Span
 from product_app.app.memory.profile.service import ProfileService
 from product_app.app.memory.retrieval.direct import DirectRetriever
 from product_app.app.memory.retrieval.router import QueryRouter
-from product_app.app.memory.retrieval.split_query import SplitQueryRetriever
-from product_app.app.memory.store.stitch import SpanStitcher
+from product_app.app.memory.retrieval.routed_query import RoutedQueryRetriever
+from product_app.app.memory.store.fragments import FragmentBuilder
 from product_app.app.memory.store.lexical_search import LexicalSearcher
-from product_app.app.memory.store.merge import merge_windows
 from product_app.app.memory.store.repository import TraceStore
 from product_app.app.memory.store.rerank import AnchorCrossEncoder, collapse_anchor_chunks
-from product_app.app.memory.store.select import select_windows, sort_by_time
+from product_app.app.memory.store.select import sort_by_time
 from product_app.app.memory.store.semantic import SemanticSearcher
 
 logger = logging.getLogger(__name__)
 
 
-def _drop_excluded(windows: List[Span], exclude: Set[int]) -> List[Span]:
-    """Remove turns that are already in the live prompt; keep window if anything remains."""
-    if not exclude:
-        return windows
-
-    kept: List[Span] = []
-    for window in windows:
-        turns = [t for t in window.messages if t.message_id not in exclude]
-        if not turns:
+def _dedupe_routed(queries: List[RoutedQuery]) -> List[RoutedQuery]:
+    out: List[RoutedQuery] = []
+    seen: Set[tuple[str, str]] = set()
+    for rq in queries:
+        key = (rq.query.casefold(), rq.role_scope)
+        if not rq.query.strip() or key in seen:
             continue
-        anchors = [mid for mid in window.anchor_ids if mid not in exclude]
-        if not anchors:
-            anchors = [t.message_id for t in turns if t.is_anchor] or [turns[0].message_id]
-        kept.append(
+        seen.add(key)
+        out.append(rq)
+    return out
+
+
+def _fragments_to_spans(fragments: List[Any]) -> List[Span]:
+    windows: List[Span] = []
+    for idx, frag in enumerate(fragments, start=1):
+        windows.append(
             Span(
-                bundle_id=window.bundle_id,
-                conversation_id=window.conversation_id,
-                anchor_ids=anchors,
-                messages=turns,
-                fused_score=window.fused_score,
-                rerank_score=window.rerank_score,
-                retrieval_queries=window.retrieval_queries,
-                chain_id=None,
-                chain_index=0,
+                bundle_id=f"f{idx}-m{frag.parent_message_id}",
+                conversation_id=int(frag.conversation_id),
+                anchor_ids=list(frag.core_unit_ids),
+                messages=[],
+                fused_score=float(frag.score),
+                rerank_score=float(frag.score),
+                fragment=frag,
             )
         )
-    return kept
+    return windows
 
 
 class RetrievalPipeline:
@@ -60,8 +59,8 @@ class RetrievalPipeline:
         semantic = SemanticSearcher(store)
         lexical = LexicalSearcher(store)
         self._direct = DirectRetriever(semantic, lexical)
-        self._split = SplitQueryRetriever(self._direct)
-        self._stitcher = SpanStitcher(store, self._embedder)
+        self._routed = RoutedQueryRetriever(self._direct)
+        self._fragments = FragmentBuilder(store, self._embedder)
         self._anchor_ce = AnchorCrossEncoder()
         self._router = QueryRouter(llm)
 
@@ -77,8 +76,9 @@ class RetrievalPipeline:
     ) -> Tuple[List[Span], RetrievalTrace]:
         started = time.time()
         trace = RetrievalTrace(
-            stitch_mode=str(mem_cfg.stitch_mode),
+            stitch_mode="fragment",
             selection_mode=str(mem_cfg.evidence_selection_mode),
+            original_query=(query or "").strip(),
         )
         exclude = {int(x) for x in (exclude_message_ids or set())}
 
@@ -86,74 +86,57 @@ class RetrievalPipeline:
             plan = self._router.plan(query)
             trace.mode = plan.mode
             trace.queries = list(plan.queries)
-            trace.subquery_count = len(plan.queries)
+            trace.subquery_count = max(1, len(plan.subqueries))
+            trace.planner_subqueries = [
+                {"query": sq.query, "role_scope": sq.role_scope} for sq in plan.subqueries
+            ]
 
-            if plan.mode == "split" and len(plan.queries) > 1:
-                retrieval_queries = list(
-                    dict.fromkeys(
-                        q.strip()
-                        for q in [query, *plan.queries]
-                        if q and str(q).strip()
-                    )
-                )
-                anchors, n_sem, n_lex = self._split.retrieve(
-                    user_id=user_id,
-                    queries=retrieval_queries,
-                    exclude_message_ids=exclude,
-                )
-            else:
-                q = plan.queries[0] if plan.queries else query
-                anchors, n_sem, n_lex = self._direct.retrieve(
-                    user_id=user_id,
-                    query=q,
-                    exclude_message_ids=exclude,
-                )
-
-            rrf_count = len(anchors)
-            # Formatter only injects user turns; drop assistant anchors before CE.
-            anchors = [hit for hit in anchors if hit.role == "user"]
-            planner_queries = (
-                list(plan.queries[:3]) if plan.mode == "split" else []
+            routed_queries = _dedupe_routed(
+                [
+                    RoutedQuery(query=(query or "").strip(), role_scope=plan.original_role_scope),
+                    *plan.subqueries,
+                ]
             )
+            anchors, n_sem, n_lex = self._routed.retrieve(
+                user_id=user_id,
+                routed_queries=routed_queries,
+                exclude_message_ids=exclude,
+            )
+            trace.candidate_unit_ids = [int(h.unit_id or h.chunk_id) for h in anchors]
+
+            planner_queries = list(plan.queries[:3]) if plan.mode == "split" else []
             anchors = self._anchor_ce.select(
                 original_query=query,
                 planner_queries=planner_queries,
                 anchors=anchors,
             )
             anchors = collapse_anchor_chunks(anchors)
-            unique_messages = len({hit.message_id for hit in anchors})
-
-            trace.extra["anchor_ce"] = 1
-            trace.extra["anchor_ce_mode"] = (
-                "split" if planner_queries else "direct"
-            )
-            trace.extra["rrf_anchors"] = rrf_count
-            trace.extra["rrf_anchor_count"] = rrf_count
-            trace.extra["ce_anchors"] = len(anchors)
-            trace.extra["ce_anchor_count"] = len(anchors)
-            trace.extra["unique_message_anchor_count"] = unique_messages
+            trace.reranked_unit_ids = [int(h.unit_id or h.chunk_id) for h in anchors]
+            trace.selected_core_unit_ids = trace.reranked_unit_ids[:]
 
             trace.semantic_hits = n_sem
             trace.lexical_hits = n_lex
             trace.anchors = len(anchors)
 
-            windows = self._stitcher.stitch(
-                user_id=user_id, anchors=anchors, queries=plan.queries
-            )
-            windows = _drop_excluded(windows, exclude)
-            trace.extra["stitched_window_count"] = len(windows)
+            fragments = self._fragments.build(user_id=user_id, hits=anchors, query=query)
+            for frag in fragments:
+                trace.expanded_segment_ids.extend(int(x) for x in frag.expanded_unit_ids)
+                if frag.reply_context_message_id:
+                    trace.reply_context_message_ids.append(int(frag.reply_context_message_id))
+                trace.expanded_user_message_ids.extend(
+                    int(x) for x in frag.earlier_user_message_ids + frag.later_user_message_ids
+                )
+                trace.included_parent_message_ids.append(int(frag.parent_message_id))
+                trace.included_unit_ids.extend(
+                    int(x) for x in frag.core_unit_ids + frag.expanded_unit_ids
+                )
 
-            windows = merge_windows(windows)
-            trace.extra["merged_window_count"] = len(windows)
-
-            windows = select_windows(
-                bundles=windows,
-                limit=mem_cfg.bundle_top_k,
-            )
+            windows = _fragments_to_spans(fragments)
+            windows = windows[: int(mem_cfg.max_retrieved_fragments)]
+            trace.fragment_count = len(windows)
+            trace.bundles = len(windows)
             trace.extra["topk_window_count"] = len(windows)
             windows = sort_by_time(windows)
-            trace.linked_chains = 0
-            trace.bundles = len(windows)
             trace.profile_hits = 0
             return windows, trace
 

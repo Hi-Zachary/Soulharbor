@@ -94,6 +94,30 @@ class MemorySettings:
     link_score_threshold: float = float(os.environ.get("MEMORY_LINK_THRESHOLD", "0.22"))
 
     context_token_budget: int = int(os.environ.get("MEMORY_CONTEXT_TOKEN_BUDGET", "1600"))
+    max_episodic_tokens: int = int(os.environ.get("MEMORY_MAX_EPISODIC_TOKENS", "2400"))
+    max_retrieved_fragments: int = int(os.environ.get("MEMORY_MAX_RETRIEVED_FRAGMENTS", "10"))
+    max_message_fragment_tokens: int = int(
+        os.environ.get("MEMORY_MAX_MESSAGE_FRAGMENT_TOKENS", "520")
+    )
+    max_segment_fragment_tokens: int = int(
+        os.environ.get("MEMORY_MAX_SEGMENT_FRAGMENT_TOKENS", "320")
+    )
+    max_reply_context_tokens: int = int(os.environ.get("MEMORY_MAX_REPLY_CONTEXT_TOKENS", "220"))
+
+    message_split_threshold: int = int(os.environ.get("MEMORY_MESSAGE_SPLIT_THRESHOLD", "320"))
+    segment_target_tokens: int = int(os.environ.get("MEMORY_SEGMENT_TARGET_TOKENS", "140"))
+    segment_hard_max_tokens: int = int(os.environ.get("MEMORY_SEGMENT_HARD_MAX_TOKENS", "200"))
+    segment_max_before: int = int(os.environ.get("MEMORY_SEGMENT_MAX_BEFORE", "1"))
+    segment_max_after: int = int(os.environ.get("MEMORY_SEGMENT_MAX_AFTER", "1"))
+    message_max_before_users: int = int(os.environ.get("MEMORY_MESSAGE_MAX_BEFORE_USERS", "2"))
+    message_max_after_users: int = int(os.environ.get("MEMORY_MESSAGE_MAX_AFTER_USERS", "2"))
+    message_max_scan_distance: int = int(os.environ.get("MEMORY_MESSAGE_MAX_SCAN_DISTANCE", "8"))
+    expansion_similarity_threshold: float = float(
+        os.environ.get("MEMORY_EXPANSION_SIMILARITY_THRESHOLD", "0.40")
+    )
+    role_scope_fallback_min_hits: int = int(
+        os.environ.get("MEMORY_ROLE_SCOPE_FALLBACK_MIN_HITS", "2")
+    )
     semantic_top_k: int = int(os.environ.get("MEMORY_SEMANTIC_TOP_K", "50"))
     lexical_top_k: int = int(os.environ.get("MEMORY_LEXICAL_TOP_K", "50"))
     anchor_top_k: int = int(

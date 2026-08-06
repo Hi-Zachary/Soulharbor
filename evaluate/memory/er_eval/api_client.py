@@ -65,15 +65,23 @@ def _post(cfg: Dict[str, Any], path: str, body: Dict[str, Any]) -> Dict[str, Any
     timeout = int(cfg.get("request_timeout", 180))
     pool = int(cfg.get("http_pool_size", 32))
     session = _get_session(pool)
-    limit = int(cfg.get("max_concurrent_api", 3))
-    retries = int(cfg.get("max_retries", 10))
-    b429 = float(cfg.get("retry_backoff_429_base", 10.0))
-    cap = float(cfg.get("retry_backoff_cap", 90.0))
+    limit = int(cfg.get("max_concurrent_api", 12))
+    retries = int(cfg.get("max_retries", 20))
+    b429 = float(cfg.get("retry_backoff_429_base", 1.5))
+    cap = float(cfg.get("retry_backoff_cap", 60.0))
+    b_other = float(cfg.get("retry_backoff_base", 2.0))
 
     def _once() -> Dict[str, Any]:
         r = session.post(url, headers=headers, json=body, timeout=timeout)
         if r.status_code in (429, 500, 502, 503, 504):
-            raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+            err = RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+            ra = r.headers.get("Retry-After") or r.headers.get("retry-after")
+            if ra:
+                try:
+                    err.retry_after = float(ra)  # type: ignore[attr-defined]
+                except ValueError:
+                    pass
+            raise err
         r.raise_for_status()
         return r.json()
 
@@ -82,6 +90,7 @@ def _post(cfg: Dict[str, Any], path: str, body: Dict[str, Any]) -> Dict[str, Any
         limit=limit,
         max_retries=retries,
         backoff_429=b429,
+        backoff_other=b_other,
         backoff_cap=cap,
     )
 

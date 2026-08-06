@@ -12,17 +12,57 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence
 from product_app.app.memory.models import Block
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS memory_messages (
+  message_id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  conversation_id INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  reply_to_message_id INTEGER,
+  has_segments INTEGER NOT NULL DEFAULT 0,
+  retrievable INTEGER NOT NULL DEFAULT 1,
+  visible_to_user INTEGER NOT NULL DEFAULT 1,
+  is_final INTEGER NOT NULL DEFAULT 1,
+  is_deleted INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_memory_messages_user_conv
+  ON memory_messages(user_id, conversation_id, position);
+
+CREATE TABLE IF NOT EXISTS memory_message_segments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_message_id INTEGER NOT NULL,
+  segment_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  start_offset INTEGER NOT NULL,
+  end_offset INTEGER NOT NULL,
+  token_count INTEGER NOT NULL,
+  UNIQUE(parent_message_id, segment_index),
+  FOREIGN KEY(parent_message_id) REFERENCES memory_messages(message_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_message_segments_parent
+  ON memory_message_segments(parent_message_id, segment_index);
+
 CREATE TABLE IF NOT EXISTS memory_blocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   conversation_id INTEGER NOT NULL,
   message_id INTEGER NOT NULL,
+  turn_id INTEGER NOT NULL DEFAULT 0,
+  unit_type TEXT NOT NULL DEFAULT 'message',
+  parent_message_id INTEGER NOT NULL DEFAULT 0,
+  segment_id INTEGER NOT NULL DEFAULT 0,
+  segment_index INTEGER NOT NULL DEFAULT -1,
   role TEXT NOT NULL,
   position INTEGER NOT NULL,
   chunk_index INTEGER NOT NULL DEFAULT 0,
   content TEXT NOT NULL,
   content_hash TEXT NOT NULL,
   created_at INTEGER NOT NULL,
+  retrievable INTEGER NOT NULL DEFAULT 1,
+  visible_to_user INTEGER NOT NULL DEFAULT 1,
+  is_final INTEGER NOT NULL DEFAULT 1,
   is_deleted INTEGER NOT NULL DEFAULT 0,
   UNIQUE(message_id, chunk_index)
 );
@@ -142,10 +182,14 @@ def _unique_messages(rows: Sequence[sqlite3.Row], *, mark_anchor_at: int | None 
         first = chunks[0]
         item = {
             "message_id": message_id,
+            "turn_id": int(first["turn_id"]) if "turn_id" in first.keys() else 0,
             "role": str(first["role"]),
             "position": int(first["position"]),
             "content": "".join(str(row["content"]) for row in chunks),
             "created_at": int(first["created_at"]),
+            "retrievable": bool(int(first["retrievable"])) if "retrievable" in first.keys() else True,
+            "visible_to_user": bool(int(first["visible_to_user"])) if "visible_to_user" in first.keys() else True,
+            "is_final": bool(int(first["is_final"])) if "is_final" in first.keys() else True,
         }
         if mark_anchor_at is not None:
             item["is_anchor"] = int(first["position"]) == int(mark_anchor_at)
@@ -172,6 +216,7 @@ class TraceStore:
         with self._db() as conn:
             self._migrate_legacy_names(conn)
             conn.executescript(_SCHEMA)
+            self._migrate_memory_block_columns(conn)
 
     @staticmethod
     def _migrate_legacy_names(conn: sqlite3.Connection) -> None:
@@ -197,6 +242,45 @@ class TraceStore:
                     "RENAME COLUMN uningested_messages TO pending_turns"
                 )
 
+    @staticmethod
+    def _migrate_memory_block_columns(conn: sqlite3.Connection) -> None:
+        cols = {
+            str(r[1])
+            for r in conn.execute("PRAGMA table_info(memory_blocks)").fetchall()
+        }
+        if "turn_id" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN turn_id INTEGER NOT NULL DEFAULT 0"
+            )
+        if "retrievable" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN retrievable INTEGER NOT NULL DEFAULT 1"
+            )
+        if "visible_to_user" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN visible_to_user INTEGER NOT NULL DEFAULT 1"
+            )
+        if "is_final" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN is_final INTEGER NOT NULL DEFAULT 1"
+            )
+        if "unit_type" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN unit_type TEXT NOT NULL DEFAULT 'message'"
+            )
+        if "parent_message_id" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN parent_message_id INTEGER NOT NULL DEFAULT 0"
+            )
+        if "segment_id" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN segment_id INTEGER NOT NULL DEFAULT 0"
+            )
+        if "segment_index" not in cols:
+            conn.execute(
+                "ALTER TABLE memory_blocks ADD COLUMN segment_index INTEGER NOT NULL DEFAULT -1"
+            )
+
     # --- writes -------------------------------------------------------------
 
     def upsert_chunks(
@@ -205,9 +289,13 @@ class TraceStore:
         user_id: int,
         conversation_id: int,
         message_id: int,
+        turn_id: int,
         role: str,
         position: int,
         created_at: int,
+        retrievable: bool,
+        visible_to_user: bool,
+        is_final: bool,
         chunks: Sequence[str],
     ) -> List[int]:
         pieces = [piece.strip() for piece in chunks if (piece or "").strip()]
@@ -216,24 +304,29 @@ class TraceStore:
             for idx, piece in enumerate(pieces):
                 conn.execute(
                     "INSERT INTO memory_blocks("
-                    "user_id, conversation_id, message_id, role, position, chunk_index, "
-                    "content, content_hash, created_at, is_deleted"
-                    ") VALUES(?,?,?,?,?,?,?,?,?,0) "
+                    "user_id, conversation_id, message_id, turn_id, role, position, chunk_index, "
+                    "content, content_hash, created_at, retrievable, visible_to_user, is_final, is_deleted"
+                    ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0) "
                     "ON CONFLICT(message_id, chunk_index) DO UPDATE SET "
                     "content=excluded.content, content_hash=excluded.content_hash, "
-                    "is_deleted=0, created_at=excluded.created_at, "
-                    "role=excluded.role, position=excluded.position, "
+                    "is_deleted=0, created_at=excluded.created_at, turn_id=excluded.turn_id, "
+                    "retrievable=excluded.retrievable, visible_to_user=excluded.visible_to_user, "
+                    "is_final=excluded.is_final, role=excluded.role, position=excluded.position, "
                     "conversation_id=excluded.conversation_id, user_id=excluded.user_id",
                     (
                         int(user_id),
                         int(conversation_id),
                         int(message_id),
+                        int(turn_id),
                         str(role),
                         int(position),
                         int(idx),
                         piece,
                         content_hash(piece),
                         int(created_at),
+                        1 if retrievable else 0,
+                        1 if visible_to_user else 0,
+                        1 if is_final else 0,
                     ),
                 )
                 row = conn.execute(
@@ -268,6 +361,228 @@ class TraceStore:
                 )
         return ids
 
+    def upsert_message_index(
+        self,
+        *,
+        user_id: int,
+        conversation_id: int,
+        message_id: int,
+        turn_id: int,
+        role: str,
+        position: int,
+        created_at: int,
+        content: str,
+        reply_to_message_id: int | None,
+        retrievable: bool,
+        visible_to_user: bool,
+        is_final: bool,
+        has_segments: bool,
+        index_units: Sequence[dict],
+        segments: Sequence[dict],
+    ) -> List[int]:
+        """Persist message metadata, optional segments, and searchable index units."""
+        ids: List[int] = []
+        with self._db() as conn:
+            conn.execute(
+                "INSERT INTO memory_messages("
+                "message_id, user_id, conversation_id, role, position, content, created_at, "
+                "reply_to_message_id, has_segments, retrievable, visible_to_user, is_final, is_deleted"
+                ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0) "
+                "ON CONFLICT(message_id) DO UPDATE SET "
+                "user_id=excluded.user_id, conversation_id=excluded.conversation_id, "
+                "role=excluded.role, position=excluded.position, content=excluded.content, "
+                "created_at=excluded.created_at, reply_to_message_id=excluded.reply_to_message_id, "
+                "has_segments=excluded.has_segments, retrievable=excluded.retrievable, "
+                "visible_to_user=excluded.visible_to_user, is_final=excluded.is_final, is_deleted=0",
+                (
+                    int(message_id),
+                    int(user_id),
+                    int(conversation_id),
+                    str(role),
+                    int(position),
+                    str(content),
+                    int(created_at),
+                    (int(reply_to_message_id) if reply_to_message_id else None),
+                    1 if has_segments else 0,
+                    1 if retrievable else 0,
+                    1 if visible_to_user else 0,
+                    1 if is_final else 0,
+                ),
+            )
+
+            old_blocks = conn.execute(
+                "SELECT id FROM memory_blocks WHERE user_id=? AND parent_message_id=?",
+                (int(user_id), int(message_id)),
+            ).fetchall()
+            for row in old_blocks:
+                cid = int(row["id"])
+                conn.execute("DELETE FROM memory_block_embeddings WHERE chunk_id=?", (cid,))
+                conn.execute("DELETE FROM memory_embed_retry WHERE chunk_id=?", (cid,))
+            conn.execute(
+                "DELETE FROM memory_blocks WHERE user_id=? AND parent_message_id=?",
+                (int(user_id), int(message_id)),
+            )
+            conn.execute(
+                "DELETE FROM memory_message_segments WHERE parent_message_id=?",
+                (int(message_id),),
+            )
+
+            segment_id_map: Dict[int, int] = {}
+            for seg in segments:
+                cur = conn.execute(
+                    "INSERT INTO memory_message_segments("
+                    "parent_message_id, segment_index, content, start_offset, end_offset, token_count"
+                    ") VALUES(?,?,?,?,?,?)",
+                    (
+                        int(message_id),
+                        int(seg["segment_index"]),
+                        str(seg["content"]),
+                        int(seg["start_offset"]),
+                        int(seg["end_offset"]),
+                        int(seg["token_count"]),
+                    ),
+                )
+                segment_id_map[int(seg["segment_index"])] = int(cur.lastrowid)
+
+            for idx, unit in enumerate(index_units):
+                unit_type = str(unit["unit_type"])
+                segment_id = int(
+                    segment_id_map.get(int(unit.get("segment_index", -1)), 0)
+                    if unit_type == "segment"
+                    else 0
+                )
+                piece = str(unit["content"])
+                conn.execute(
+                    "INSERT INTO memory_blocks("
+                    "user_id, conversation_id, message_id, turn_id, unit_type, parent_message_id, "
+                    "segment_id, segment_index, role, position, chunk_index, content, content_hash, "
+                    "created_at, retrievable, visible_to_user, is_final, is_deleted"
+                    ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
+                    (
+                        int(user_id),
+                        int(conversation_id),
+                        int(message_id),
+                        int(turn_id),
+                        unit_type,
+                        int(unit["parent_message_id"]),
+                        segment_id,
+                        int(unit.get("segment_index", -1)),
+                        str(role),
+                        int(position),
+                        int(idx),
+                        piece,
+                        content_hash(piece),
+                        int(created_at),
+                        1 if retrievable else 0,
+                        1 if visible_to_user else 0,
+                        1 if is_final else 0,
+                    ),
+                )
+                row = conn.execute(
+                    "SELECT id FROM memory_blocks WHERE message_id=? AND chunk_index=?",
+                    (int(message_id), int(idx)),
+                ).fetchone()
+                if row:
+                    ids.append(int(row["id"]))
+        return ids
+
+    def get_message(self, *, user_id: int, message_id: int) -> Optional[Dict[str, Any]]:
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT * FROM memory_messages "
+                "WHERE user_id=? AND message_id=? AND is_deleted=0",
+                (int(user_id), int(message_id)),
+            ).fetchone()
+            if not row:
+                return None
+            return self._message_row(row)
+
+    def list_message_segments(
+        self, *, user_id: int, parent_message_id: int
+    ) -> List[Dict[str, Any]]:
+        with self._db() as conn:
+            owned = conn.execute(
+                "SELECT 1 FROM memory_messages WHERE user_id=? AND message_id=? AND is_deleted=0",
+                (int(user_id), int(parent_message_id)),
+            ).fetchone()
+            if not owned:
+                return []
+            rows = conn.execute(
+                "SELECT id, parent_message_id, segment_index, content, start_offset, end_offset, token_count "
+                "FROM memory_message_segments WHERE parent_message_id=? "
+                "ORDER BY segment_index ASC",
+                (int(parent_message_id),),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def list_conversation_message_rows(
+        self,
+        *,
+        user_id: int,
+        conversation_id: int,
+    ) -> List[Dict[str, Any]]:
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memory_messages "
+                "WHERE user_id=? AND conversation_id=? AND is_deleted=0 "
+                "AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
+                "ORDER BY position ASC",
+                (int(user_id), int(conversation_id)),
+            ).fetchall()
+            return [self._message_row(r) for r in rows]
+
+    def scan_conversation_messages(
+        self,
+        *,
+        user_id: int,
+        conversation_id: int,
+        start_position: int,
+        direction: str,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        if int(limit) <= 0:
+            return []
+        with self._db() as conn:
+            if direction == "before":
+                rows = conn.execute(
+                    "SELECT * FROM memory_messages "
+                    "WHERE user_id=? AND conversation_id=? AND position<? AND is_deleted=0 "
+                    "AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
+                    "ORDER BY position DESC LIMIT ?",
+                    (int(user_id), int(conversation_id), int(start_position), int(limit)),
+                ).fetchall()
+                rows = list(reversed(rows))
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM memory_messages "
+                    "WHERE user_id=? AND conversation_id=? AND position>? AND is_deleted=0 "
+                    "AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
+                    "ORDER BY position ASC LIMIT ?",
+                    (int(user_id), int(conversation_id), int(start_position), int(limit)),
+                ).fetchall()
+            return [self._message_row(r) for r in rows]
+
+    @staticmethod
+    def _message_row(row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "message_id": int(row["message_id"]),
+            "user_id": int(row["user_id"]),
+            "conversation_id": int(row["conversation_id"]),
+            "role": str(row["role"]),
+            "position": int(row["position"]),
+            "content": str(row["content"]),
+            "created_at": int(row["created_at"]),
+            "reply_to_message_id": (
+                int(row["reply_to_message_id"])
+                if row["reply_to_message_id"] is not None
+                else None
+            ),
+            "has_segments": bool(int(row["has_segments"])),
+            "retrievable": bool(int(row["retrievable"])),
+            "visible_to_user": bool(int(row["visible_to_user"])),
+            "is_final": bool(int(row["is_final"])),
+        }
+
     def save_embedding(self, chunk_id: int, user_id: int, embedding: List[float]) -> None:
         with self._db() as conn:
             conn.execute(
@@ -294,7 +609,7 @@ class TraceStore:
     def list_embed_retries(self, *, max_attempts: int = 5, limit: int = 100) -> List[Dict[str, Any]]:
         with self._db() as conn:
             rows = conn.execute(
-                "SELECT r.chunk_id, r.user_id, r.attempts, c.content "
+                "SELECT r.chunk_id, r.user_id, r.attempts, c.role, c.content "
                 "FROM memory_embed_retry r "
                 "JOIN memory_blocks c ON c.id=r.chunk_id "
                 "WHERE r.attempts < ? AND c.is_deleted=0 "
@@ -306,26 +621,41 @@ class TraceStore:
                     "chunk_id": int(r["chunk_id"]),
                     "user_id": int(r["user_id"]),
                     "attempts": int(r["attempts"]),
+                    "role": str(r["role"]),
                     "content": str(r["content"]),
                 }
                 for r in rows
             ]
 
-    def list_active_with_embeddings(self, user_id: int, limit: int = 5000) -> List[Block]:
+    def list_active_with_embeddings(
+        self,
+        user_id: int,
+        limit: int = 5000,
+        *,
+        role_scope: str = "both",
+    ) -> List[Block]:
         with self._db() as conn:
-            rows = conn.execute(
+            sql = (
                 "SELECT c.*, e.embedding_json FROM memory_blocks c "
                 "LEFT JOIN memory_block_embeddings e ON e.chunk_id=c.id "
                 "WHERE c.user_id=? AND c.is_deleted=0 "
-                "ORDER BY c.created_at DESC LIMIT ?",
-                (int(user_id), int(limit)),
-            ).fetchall()
+                "AND c.retrievable=1 AND c.visible_to_user=1 AND c.is_final=1 "
+            )
+            params: List[Any] = [int(user_id)]
+            scope = str(role_scope or "both").lower()
+            if scope == "user":
+                sql += "AND c.role='user' "
+            elif scope == "assistant":
+                sql += "AND c.role='assistant' "
+            sql += "ORDER BY c.created_at DESC LIMIT ?"
+            params.append(int(limit))
+            rows = conn.execute(sql, params).fetchall()
             return [self._to_chunk(r) for r in rows]
 
     def active_embedding_fingerprint(self, user_id: int) -> tuple:
         """Cheap signature so the FAISS cache can detect ingest/forget without hooks.
 
-        Counts user chunks only — matches the user_only ANN index.
+        Counts retrievable final chunks only — matches the active ANN index.
         """
         with self._db() as conn:
             row = conn.execute(
@@ -334,7 +664,8 @@ class TraceStore:
                 "COALESCE(MAX(e.updated_at), 0) AS max_upd "
                 "FROM memory_blocks c "
                 "JOIN memory_block_embeddings e ON e.chunk_id=c.id "
-                "WHERE c.user_id=? AND c.is_deleted=0 AND c.role='user'",
+                "WHERE c.user_id=? AND c.is_deleted=0 "
+                "AND c.retrievable=1 AND c.visible_to_user=1 AND c.is_final=1",
                 (int(user_id),),
             ).fetchone()
             return (int(row["n"] or 0), int(row["max_id"] or 0), int(row["max_upd"] or 0))
@@ -367,21 +698,32 @@ class TraceStore:
     ) -> List[Dict[str, Any]]:
         with self._db() as conn:
             rows = conn.execute(
-                "SELECT message_id, role, position, content, created_at, chunk_index "
+                "SELECT message_id, turn_id, role, position, content, created_at, chunk_index, "
+                "retrievable, visible_to_user, is_final "
                 "FROM memory_blocks "
                 "WHERE user_id=? AND conversation_id=? AND is_deleted=0 "
+                "AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
                 "ORDER BY position ASC, chunk_index ASC",
                 (int(user_id), int(conversation_id)),
             ).fetchall()
             return _unique_messages(rows)
 
     def list_recent_messages(self, user_id: int, limit: int = 8) -> List[Dict[str, Any]]:
-        """Latest distinct messages for a user (any conversation), oldest→newest.
-
-        Fetches N distinct message_ids first, then all chunks for those ids so
-        long multi-chunk messages are fully reconstructed.
-        """
         n = max(1, int(limit))
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT message_id, role, position, content, created_at, reply_to_message_id, has_segments "
+                "FROM memory_messages "
+                "WHERE user_id=? AND is_deleted=0 AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
+                "ORDER BY created_at DESC, message_id DESC LIMIT ?",
+                (int(user_id), n),
+            ).fetchall()
+            if rows:
+                msgs = [self._message_row(r) for r in reversed(rows)]
+                return msgs
+        return self._list_recent_messages_from_blocks(user_id, limit=n)
+
+    def _list_recent_messages_from_blocks(self, user_id: int, limit: int = 8) -> List[Dict[str, Any]]:
         with self._db() as conn:
             id_rows = conn.execute(
                 "SELECT message_id FROM ("
@@ -400,9 +742,12 @@ class TraceStore:
             ids_chrono = list(reversed(ids_newest_first))
             placeholders = ",".join("?" * len(ids_chrono))
             rows = conn.execute(
-                "SELECT message_id, role, position, content, created_at, chunk_index "
+                "SELECT message_id, turn_id, role, position, content, created_at, chunk_index, "
+                "retrievable, visible_to_user, is_final "
                 "FROM memory_blocks "
-                f"WHERE user_id=? AND is_deleted=0 AND message_id IN ({placeholders}) "
+                f"WHERE user_id=? AND is_deleted=0 AND retrievable=1 "
+                "AND visible_to_user=1 AND is_final=1 "
+                f"AND message_id IN ({placeholders}) "
                 "ORDER BY created_at ASC, message_id ASC, chunk_index ASC",
                 (int(user_id), *ids_chrono),
             ).fetchall()
@@ -431,14 +776,81 @@ class TraceStore:
             lo = int(position) - int(before)
             hi = int(position) + int(after)
             rows = conn.execute(
-                "SELECT message_id, role, position, content, created_at, chunk_index "
+                "SELECT message_id, turn_id, role, position, content, created_at, chunk_index, "
+                "retrievable, visible_to_user, is_final "
                 "FROM memory_blocks "
                 "WHERE user_id=? AND conversation_id=? AND is_deleted=0 "
+                "AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
                 "AND position BETWEEN ? AND ? "
                 "ORDER BY position ASC, chunk_index ASC",
                 (int(user_id), int(conversation_id), lo, hi),
             ).fetchall()
             return _unique_messages(rows, mark_anchor_at=int(position))
+
+    def list_turn_messages(
+        self,
+        *,
+        user_id: int,
+        conversation_id: int,
+        turn_id: int,
+    ) -> List[Dict[str, Any]]:
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT message_id, turn_id, role, position, content, created_at, chunk_index, "
+                "retrievable, visible_to_user, is_final "
+                "FROM memory_blocks "
+                "WHERE user_id=? AND conversation_id=? AND turn_id=? AND is_deleted=0 "
+                "AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
+                "ORDER BY position ASC, chunk_index ASC",
+                (int(user_id), int(conversation_id), int(turn_id)),
+            ).fetchall()
+            return _unique_messages(rows)
+
+    def list_user_messages_before_turn(
+        self,
+        *,
+        user_id: int,
+        conversation_id: int,
+        turn_id: int,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        if int(limit) <= 0:
+            return []
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT message_id, turn_id, role, position, content, created_at, chunk_index, "
+                "retrievable, visible_to_user, is_final "
+                "FROM memory_blocks "
+                "WHERE user_id=? AND conversation_id=? AND turn_id<? AND role='user' "
+                "AND is_deleted=0 AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
+                "ORDER BY turn_id DESC, chunk_index ASC LIMIT ?",
+                (int(user_id), int(conversation_id), int(turn_id), int(limit)),
+            ).fetchall()
+            msgs = _unique_messages(rows)
+            msgs.sort(key=lambda m: (int(m["turn_id"]), int(m["message_id"])))
+            return msgs
+
+    def list_user_messages_after_turn(
+        self,
+        *,
+        user_id: int,
+        conversation_id: int,
+        turn_id: int,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        if int(limit) <= 0:
+            return []
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT message_id, turn_id, role, position, content, created_at, chunk_index, "
+                "retrievable, visible_to_user, is_final "
+                "FROM memory_blocks "
+                "WHERE user_id=? AND conversation_id=? AND turn_id>? AND role='user' "
+                "AND is_deleted=0 AND retrievable=1 AND visible_to_user=1 AND is_final=1 "
+                "ORDER BY turn_id ASC, chunk_index ASC LIMIT ?",
+                (int(user_id), int(conversation_id), int(turn_id), int(limit)),
+            ).fetchall()
+            return _unique_messages(rows)
 
     # --- deletes ------------------------------------------------------------
 
@@ -454,6 +866,10 @@ class TraceStore:
             cur = conn.execute(
                 "UPDATE memory_blocks SET is_deleted=1 "
                 "WHERE user_id=? AND message_id=?",
+                (int(user_id), int(message_id)),
+            )
+            conn.execute(
+                "UPDATE memory_messages SET is_deleted=1 WHERE user_id=? AND message_id=?",
                 (int(user_id), int(message_id)),
             )
             for cid in ids:
@@ -489,6 +905,10 @@ class TraceStore:
         with self._db() as conn:
             cur = conn.execute(
                 "UPDATE memory_blocks SET is_deleted=1 WHERE user_id=?",
+                (int(user_id),),
+            )
+            conn.execute(
+                "UPDATE memory_messages SET is_deleted=1 WHERE user_id=?",
                 (int(user_id),),
             )
             # Profiles are owned by ProfileService.forget_all / soft_delete_user.
@@ -674,6 +1094,7 @@ class TraceStore:
             user_id=int(row["user_id"]),
             conversation_id=int(row["conversation_id"]),
             message_id=int(row["message_id"]),
+            turn_id=int(row["turn_id"]) if "turn_id" in row.keys() else 0,
             role=str(row["role"]),
             position=int(row["position"]),
             chunk_index=int(row["chunk_index"]),
@@ -681,4 +1102,11 @@ class TraceStore:
             created_at=int(row["created_at"]),
             is_deleted=bool(int(row["is_deleted"])),
             embedding=emb,
+            retrievable=bool(int(row["retrievable"])) if "retrievable" in row.keys() else True,
+            visible_to_user=bool(int(row["visible_to_user"])) if "visible_to_user" in row.keys() else True,
+            is_final=bool(int(row["is_final"])) if "is_final" in row.keys() else True,
+            unit_type=str(row["unit_type"]) if "unit_type" in row.keys() else "message",
+            parent_message_id=int(row["parent_message_id"]) if "parent_message_id" in row.keys() else int(row["message_id"]),
+            segment_id=int(row["segment_id"]) if "segment_id" in row.keys() else 0,
+            segment_index=int(row["segment_index"]) if "segment_index" in row.keys() else -1,
         )

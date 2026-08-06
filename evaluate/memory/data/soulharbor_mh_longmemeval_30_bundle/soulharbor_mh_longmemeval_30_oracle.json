@@ -1,0 +1,2100 @@
+[
+  {
+    "question_id": "sh_mh_lme_001",
+    "question_type": "single-session-user",
+    "question": "用户第一次开题预演时，最容易卡住的是哪一部分？",
+    "answer": "研究假设和变量定义之间的衔接",
+    "question_date": "2025/02/04 (Tue) 10:30",
+    "haystack_session_ids": [
+      "sh_mh_lme_001-s19"
+    ],
+    "haystack_dates": [
+      "2024/09/08 (Sun) 10:30"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_001-s19-u1",
+          "role": "user",
+          "content": "第一次预演结束后，我把最容易卡住的部分单独记了下来，是研究假设和变量定义之间的衔接。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_001-s19-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_001-s19"
+    ],
+    "history_id": "sh_mh_lme_001",
+    "capability": "single-session-user",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "academic_stress",
+    "theme": "论文进度与睡眠边界",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "研究假设和变量定义之间的衔接"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_001-s19-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 38,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_002",
+    "question_type": "single-session-user",
+    "question": "第一次发生延期时，具体缺少的是什么文件？",
+    "answer": "第二批质谱原始文件",
+    "question_date": "2025/10/27 (Mon) 13:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_002-s22"
+    ],
+    "haystack_dates": [
+      "2025/07/07 (Mon) 12:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_002-s22-u1",
+          "role": "user",
+          "content": "我最介意的不是数据晚了，而是对方没有提前说；那次缺的是第二批质谱原始文件。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_002-s22-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_002-s22"
+    ],
+    "history_id": "sh_mh_lme_002",
+    "capability": "single-session-user",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "academic_stress",
+    "theme": "实验室合作冲突",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "第二批质谱原始文件"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_002-s22-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 36,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_003",
+    "question_type": "single-session-assistant",
+    "question": "助手在那次讨论中提出了什么可执行的尝试？",
+    "answer": "看到同学材料后先等二十四小时，再决定是否修改自己的版本",
+    "question_date": "2024/12/08 (Sun) 10:00",
+    "haystack_session_ids": [
+      "sh_mh_lme_003-s05"
+    ],
+    "haystack_dates": [
+      "2024/04/18 (Thu) 10:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_003-s05-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“看到同学的经历就会临时增加材料，原本写好的内容反而越来越散”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_003-s05-a1",
+          "role": "assistant",
+          "content": "看到同学材料后先等二十四小时，再决定是否修改自己的版本。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_003-s05-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_003-s05-a2",
+          "role": "assistant",
+          "content": "这个顺序把恢复空间也算进去了，不需要靠一直绷着来维持。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_003-s05"
+    ],
+    "history_id": "sh_mh_lme_003",
+    "capability": "single-session-assistant",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "academic_stress",
+    "theme": "奖学金申请与比较压力",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "看到同学材料后先等二十四小时，再决定是否修改自己的版本"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_003-s05-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 36,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_004_abs",
+    "question_type": "single-session-user",
+    "question": "经理最终是否批准用户长期居家办公？",
+    "answer": "历史中没有提供相关信息。",
+    "question_date": "2023/12/31 (Sun) 15:15",
+    "haystack_session_ids": [],
+    "haystack_dates": [],
+    "haystack_sessions": [],
+    "answer_session_ids": [],
+    "history_id": "sh_mh_lme_004",
+    "capability": "abstention",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "workplace_burnout",
+    "theme": "远程工作与下班边界",
+    "memory_target": "episodic",
+    "answerable": false,
+    "aliases": [
+      "历史未提供",
+      "对话中没有说明",
+      "无法从现有历史判断",
+      "没有足够信息"
+    ],
+    "evidence_message_ids": [],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "abstention"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_005",
+    "question_type": "temporal-reasoning",
+    "question": "“完成第一次正式交接”和“开始轮换后的第一个无值班周末”哪一件先发生？请按先后顺序回答。",
+    "answer": "先发生“完成第一次正式交接”，之后发生“开始轮换后的第一个无值班周末”。",
+    "question_date": "2026/03/04 (Wed) 16:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_005-s10",
+      "sh_mh_lme_005-s20"
+    ],
+    "haystack_dates": [
+      "2025/07/29 (Tue) 12:45",
+      "2025/10/19 (Sun) 11:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_005-s10-u1",
+          "role": "user",
+          "content": "完成第一次正式交接是在周二发生的。我把日期记在了日历里，之后才开始处理下一步。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_005-s10-a1",
+          "role": "assistant",
+          "content": "有明确的时间点很好，之后回看变化时不用只凭模糊印象。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_005-s20-u1",
+          "role": "user",
+          "content": "开始轮换后的第一个无值班周末比前面的事情晚一些。我当时还特意翻了日历，确认两件事不是同一周发生的。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_005-s20-a1",
+          "role": "assistant",
+          "content": "这样时间关系就比较清楚了，后面不容易把不同阶段的决定混在一起。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_005-s10",
+      "sh_mh_lme_005-s20"
+    ],
+    "history_id": "sh_mh_lme_005",
+    "capability": "temporal-reasoning",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "workplace_burnout",
+    "theme": "值班压力与恢复安排",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "先完成第一次正式交接，后开始轮换后的第一个无值班周末",
+      "完成第一次正式交接在前，开始轮换后的第一个无值班周末在后"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_005-s10-u1",
+      "sh_mh_lme_005-s20-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "temporal_order",
+      "first": "完成第一次正式交接",
+      "second": "开始轮换后的第一个无值班周末"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 37,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_006_abs",
+    "question_type": "single-session-user",
+    "question": "新负责人之前在哪家公司工作？",
+    "answer": "历史中没有提供相关信息。",
+    "question_date": "2025/01/26 (Sun) 10:00",
+    "haystack_session_ids": [],
+    "haystack_dates": [],
+    "haystack_sessions": [],
+    "answer_session_ids": [],
+    "history_id": "sh_mh_lme_006",
+    "capability": "abstention",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "workplace_burnout",
+    "theme": "团队重组与角色变化",
+    "memory_target": "episodic",
+    "answerable": false,
+    "aliases": [
+      "历史未提供",
+      "对话中没有说明",
+      "无法从现有历史判断",
+      "没有足够信息"
+    ],
+    "evidence_message_ids": [],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "abstention"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_007",
+    "question_type": "single-session-user",
+    "question": "第一次联系中断时，对方实际在忙什么？",
+    "answer": "准备周五的资格培训",
+    "question_date": "2024/12/28 (Sat) 08:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_007-s16"
+    ],
+    "haystack_dates": [
+      "2024/07/14 (Sun) 10:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_007-s16-u1",
+          "role": "user",
+          "content": "第一次把误会说开时，对方其实是在准备周五的资格培训，不是在回避我。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_007-s16-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_007-s16"
+    ],
+    "history_id": "sh_mh_lme_007",
+    "capability": "single-session-user",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "relationships_boundaries",
+    "theme": "异地关系与沟通节奏",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "准备周五的资格培训"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_007-s16-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 38,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_008_abs",
+    "question_type": "single-session-user",
+    "question": "室友的朋友具体叫什么名字？",
+    "answer": "历史中没有提供相关信息。",
+    "question_date": "2026/02/15 (Sun) 07:15",
+    "haystack_session_ids": [],
+    "haystack_dates": [],
+    "haystack_sessions": [],
+    "answer_session_ids": [],
+    "history_id": "sh_mh_lme_008",
+    "capability": "abstention",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "relationships_boundaries",
+    "theme": "室友冲突与居住边界",
+    "memory_target": "episodic",
+    "answerable": false,
+    "aliases": [
+      "历史未提供",
+      "对话中没有说明",
+      "无法从现有历史判断",
+      "没有足够信息"
+    ],
+    "evidence_message_ids": [],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "abstention"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 36,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_009",
+    "question_type": "single-session-preference",
+    "question": "用户明确表示，压力上来时更适合自己的处理顺序是什么？",
+    "answer": "先问他已经尝试了什么，再决定能提供哪一步帮助",
+    "question_date": "2025/02/05 (Wed) 15:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_009-s13"
+    ],
+    "haystack_dates": [
+      "2024/07/27 (Sat) 11:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_009-s13-u1",
+          "role": "user",
+          "content": "我慢慢发现，压力上来时更适合我的顺序是先问他已经尝试了什么，再决定能提供哪一步帮助。一开始就逼自己解释清楚，通常只会更乱。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_009-s13-a1",
+          "role": "assistant",
+          "content": "这个顺序既具体，也给了你一点缓冲。重要的是它在真实场景里能不能重复出现。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_009-s13"
+    ],
+    "history_id": "sh_mh_lme_009",
+    "capability": "single-session-preference",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "relationships_boundaries",
+    "theme": "兄妹责任边界",
+    "memory_target": "profile",
+    "answerable": true,
+    "aliases": [
+      "先问他已经尝试了什么，再决定能提供哪一步帮助"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_009-s13-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 37,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_010",
+    "question_type": "single-session-user",
+    "question": "用户第一次参加读书会时讨论的是哪本书？",
+    "answer": "《冬牧场》",
+    "question_date": "2024/03/21 (Thu) 12:15",
+    "haystack_session_ids": [
+      "sh_mh_lme_010-s17"
+    ],
+    "haystack_dates": [
+      "2023/10/12 (Thu) 10:15"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_010-s17-u1",
+          "role": "user",
+          "content": "第一次活动讨论的是《冬牧场》，我坐在靠窗第二排。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_010-s17-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_010-s17"
+    ],
+    "history_id": "sh_mh_lme_010",
+    "capability": "single-session-user",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "adjustment_loneliness",
+    "theme": "搬到新城市后的孤独",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "《冬牧场》"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_010-s17-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_011",
+    "question_type": "temporal-reasoning",
+    "question": "“第一次拒绝临时相亲”和“和父母完成一次边界谈话”哪一件先发生？请按先后顺序回答。",
+    "answer": "先发生“第一次拒绝临时相亲”，之后发生“和父母完成一次边界谈话”。",
+    "question_date": "2023/12/29 (Fri) 23:00",
+    "haystack_session_ids": [
+      "sh_mh_lme_011-s12",
+      "sh_mh_lme_011-s21"
+    ],
+    "haystack_dates": [
+      "2023/07/15 (Sat) 19:00",
+      "2023/09/13 (Wed) 18:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_011-s12-u1",
+          "role": "user",
+          "content": "第一次拒绝临时相亲是在周六发生的。我把日期记在了日历里，之后才开始处理下一步。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_011-s12-a1",
+          "role": "assistant",
+          "content": "有明确的时间点很好，之后回看变化时不用只凭模糊印象。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_011-s21-u1",
+          "role": "user",
+          "content": "和父母完成一次边界谈话比前面的事情晚一些。我当时还特意翻了日历，确认两件事不是同一周发生的。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_011-s21-a1",
+          "role": "assistant",
+          "content": "这样时间关系就比较清楚了，后面不容易把不同阶段的决定混在一起。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_011-s12",
+      "sh_mh_lme_011-s21"
+    ],
+    "history_id": "sh_mh_lme_011",
+    "capability": "temporal-reasoning",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "adjustment_loneliness",
+    "theme": "回到家乡后的角色变化",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "先第一次拒绝临时相亲，后和父母完成一次边界谈话",
+      "第一次拒绝临时相亲在前，和父母完成一次边界谈话在后"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_011-s12-u1",
+      "sh_mh_lme_011-s21-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "temporal_order",
+      "first": "第一次拒绝临时相亲",
+      "second": "和父母完成一次边界谈话"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_012",
+    "question_type": "multi-session",
+    "question": "综合不同阶段的对话，请说明用户的固定支持安排；回答“用户第一次坐错的是哪班校车，在哪里发现的？”；并写出助手当时给出的试行方法。",
+    "answer": "固定联系是同门蒋晨，每周一早上一起确认本周课程地点；相关具体细节是东门出发的三号校车，在体育馆站发现；助手建议前一晚查看一次路线，早上不重复刷新校车群。",
+    "question_date": "2025/12/24 (Wed) 11:30",
+    "haystack_session_ids": [
+      "sh_mh_lme_012-s03",
+      "sh_mh_lme_012-s08",
+      "sh_mh_lme_012-s19"
+    ],
+    "haystack_dates": [
+      "2025/04/12 (Sat) 10:30",
+      "2025/05/20 (Tue) 12:30",
+      "2025/08/18 (Mon) 09:30"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_012-s03-u1",
+          "role": "user",
+          "content": "最近同门蒋晨和我约好每周一早上一起确认本周课程地点。有时候我们只聊吃饭和最近看的东西，不一定每次都谈这件事。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_012-s03-a1",
+          "role": "assistant",
+          "content": "这种固定联系的好处是不用等到特别难受才临时找人，也不会把每次联系都变成一次正式复盘。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_012-s08-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“新环境本身不算糟，但通勤和课程地点不断变化让我总觉得来不及”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_012-s08-a1",
+          "role": "assistant",
+          "content": "前一晚查看一次路线，早上不重复刷新校车群。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_012-s08-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_012-s08-a2",
+          "role": "assistant",
+          "content": "这个顺序把恢复空间也算进去了，不需要靠一直绷着来维持。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_012-s19-u1",
+          "role": "user",
+          "content": "第一次坐错的是从东门出发的三号校车，我在体育馆站才发现方向反了。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_012-s19-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_012-s03",
+      "sh_mh_lme_012-s19",
+      "sh_mh_lme_012-s08"
+    ],
+    "history_id": "sh_mh_lme_012",
+    "capability": "multi-session",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "adjustment_loneliness",
+    "theme": "更换校区与通勤",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [],
+    "evidence_message_ids": [
+      "sh_mh_lme_012-s03-u1",
+      "sh_mh_lme_012-s19-u1",
+      "sh_mh_lme_012-s08-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "structured_fields",
+      "required_fields": [
+        "support_arrangement",
+        "event_detail",
+        "assistant_plan"
+      ]
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    },
+    "answer_fields": {
+      "support_arrangement": "同门蒋晨，每周一早上一起确认本周课程地点",
+      "event_detail": "东门出发的三号校车，在体育馆站发现",
+      "assistant_plan": "前一晚查看一次路线，早上不重复刷新校车群"
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_013",
+    "question_type": "single-session-assistant",
+    "question": "助手当时建议用户先做哪项小范围尝试？",
+    "answer": "把康复问题集中记在一张表里，复诊时统一询问，不在网上反复搜索",
+    "question_date": "2024/11/11 (Mon) 21:15",
+    "haystack_session_ids": [
+      "sh_mh_lme_013-s08"
+    ],
+    "haystack_dates": [
+      "2024/05/04 (Sat) 19:15"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_013-s08-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“我会把每个小变化都当成自己照顾得不够好，工作时也不停看家庭群”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_013-s08-a1",
+          "role": "assistant",
+          "content": "把康复问题集中记在一张表里，复诊时统一询问，不在网上反复搜索。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_013-s08-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_013-s08-a2",
+          "role": "assistant",
+          "content": "先按这个版本走一段，再根据实际情况改，不用现在把所有以后都决定完。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_013-s08"
+    ],
+    "history_id": "sh_mh_lme_013",
+    "capability": "single-session-assistant",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "caregiving_stress",
+    "theme": "父亲术后康复照护",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "把康复问题集中记在一张表里，复诊时统一询问，不在网上反复搜索"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_013-s08-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_014",
+    "question_type": "single-session-preference",
+    "question": "面对压力时，用户认为怎样的先后顺序更适合自己？",
+    "answer": "先按兽医给出的警示标准判断，不把每次波动都解释成恶化",
+    "question_date": "2023/11/04 (Sat) 16:30",
+    "haystack_session_ids": [
+      "sh_mh_lme_014-s14"
+    ],
+    "haystack_dates": [
+      "2023/05/17 (Wed) 15:30"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_014-s14-u1",
+          "role": "user",
+          "content": "我慢慢发现，压力上来时更适合我的顺序是先按兽医给出的警示标准判断，不把每次波动都解释成恶化。一开始就逼自己解释清楚，通常只会更乱。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_014-s14-a1",
+          "role": "assistant",
+          "content": "这个顺序既具体，也给了你一点缓冲。重要的是它在真实场景里能不能重复出现。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_014-s14"
+    ],
+    "history_id": "sh_mh_lme_014",
+    "capability": "single-session-preference",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "caregiving_stress",
+    "theme": "照顾慢性病宠物",
+    "memory_target": "profile",
+    "answerable": true,
+    "aliases": [
+      "先按兽医给出的警示标准判断，不把每次波动都解释成恶化"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_014-s14-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_015",
+    "question_type": "knowledge-update",
+    "question": "用户目前没有继续沿用最初的做法。现在实际采用什么安排？",
+    "answer": "每天只问一个开放问题，并与班主任每周沟通一次",
+    "question_date": "2025/02/02 (Sun) 20:15",
+    "haystack_session_ids": [
+      "sh_mh_lme_015-s23",
+      "sh_mh_lme_015-s29"
+    ],
+    "haystack_dates": [
+      "2024/10/16 (Wed) 14:15",
+      "2024/12/01 (Sun) 14:15"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_015-s23-u1",
+          "role": "user",
+          "content": "我试了一阵后发现，每天追问所有课堂细节让我越来越难恢复。这周我改成每天只问一个开放问题，并与班主任每周沟通一次，先按这个版本执行。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_015-s23-a1",
+          "role": "assistant",
+          "content": "新做法的范围更清楚，也保留了继续推进事情的空间。先观察它在忙的时候是否仍然可行。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_015-s29-u1",
+          "role": "user",
+          "content": "昨晚忙起来时，我确实又想到过“每天追问所有课堂细节”，最后还是照着“每天只问一个开放问题，并与班主任每周沟通一次”做了。今天回头看，至少没有把原来的节奏全部推翻。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_015-s29-a1",
+          "role": "assistant",
+          "content": "出现旧念头和重新采用旧办法不是一回事。你最后实际执行的行为更能说明现在的安排。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_015-s23",
+      "sh_mh_lme_015-s29"
+    ],
+    "history_id": "sh_mh_lme_015",
+    "capability": "knowledge-update",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "caregiving_stress",
+    "theme": "孩子转学适应",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [
+      "每天只问一个开放问题，并与班主任每周沟通一次"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_015-s23-u1",
+      "sh_mh_lme_015-s29-u1"
+    ],
+    "superseded_message_ids": [
+      "sh_mh_lme_015-s08-u1"
+    ],
+    "evaluation": {
+      "type": "knowledge_update"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 38,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_016",
+    "question_type": "single-session-preference",
+    "question": "用户后来确认，哪种应对顺序对自己更合适？",
+    "answer": "先让情绪过去一阵，再决定是否联系，不在最难受时做关系决定",
+    "question_date": "2026/03/18 (Wed) 18:30",
+    "haystack_session_ids": [
+      "sh_mh_lme_016-s14"
+    ],
+    "haystack_dates": [
+      "2025/08/27 (Wed) 19:30"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_016-s14-u1",
+          "role": "user",
+          "content": "我慢慢发现，压力上来时更适合我的顺序是先让情绪过去一阵，再决定是否联系，不在最难受时做关系决定。一开始就逼自己解释清楚，通常只会更乱。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_016-s14-a1",
+          "role": "assistant",
+          "content": "这个顺序既具体，也给了你一点缓冲。重要的是它在真实场景里能不能重复出现。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_016-s14"
+    ],
+    "history_id": "sh_mh_lme_016",
+    "capability": "single-session-preference",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "grief_and_change",
+    "theme": "分手后的生活重建",
+    "memory_target": "profile",
+    "answerable": true,
+    "aliases": [
+      "先让情绪过去一阵，再决定是否联系，不在最难受时做关系决定"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_016-s14-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 38,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_017",
+    "question_type": "knowledge-update",
+    "question": "经过后续调整，用户现在执行的是哪一套安排？",
+    "answer": "只确认当前项目交接和三位可联系的人",
+    "question_date": "2023/11/09 (Thu) 14:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_017-s24",
+      "sh_mh_lme_017-s29"
+    ],
+    "haystack_dates": [
+      "2023/08/09 (Wed) 12:45",
+      "2023/09/10 (Sun) 13:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_017-s24-u1",
+          "role": "user",
+          "content": "我试了一阵后发现，把未来两年的问题一次性整理给导师让我越来越难恢复。这周我改成只确认当前项目交接和三位可联系的人，先按这个版本执行。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_017-s24-a1",
+          "role": "assistant",
+          "content": "新做法的范围更清楚，也保留了继续推进事情的空间。先观察它在忙的时候是否仍然可行。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_017-s29-u1",
+          "role": "user",
+          "content": "昨晚忙起来时，我确实又想到过“把未来两年的问题一次性整理给导师”，最后还是照着“只确认当前项目交接和三位可联系的人”做了。今天回头看，至少没有把原来的节奏全部推翻。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_017-s29-a1",
+          "role": "assistant",
+          "content": "出现旧念头和重新采用旧办法不是一回事。你最后实际执行的行为更能说明现在的安排。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_017-s24",
+      "sh_mh_lme_017-s29"
+    ],
+    "history_id": "sh_mh_lme_017",
+    "capability": "knowledge-update",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "grief_and_change",
+    "theme": "导师退休后的变化",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [
+      "只确认当前项目交接和三位可联系的人"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_017-s24-u1",
+      "sh_mh_lme_017-s29-u1"
+    ],
+    "superseded_message_ids": [
+      "sh_mh_lme_017-s09-u1"
+    ],
+    "evaluation": {
+      "type": "knowledge_update"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_018",
+    "question_type": "multi-session",
+    "question": "请从三段不同的对话中找出：固定联系对象与频率、项目归档最后确认的具体事项是什么的答案，以及助手建议的小范围尝试。",
+    "answer": "固定联系是前组员易舟，每月第一周交换一次近况；相关具体细节是用户访谈原始录音的访问权限；助手建议给旧项目写一页结束记录，然后停止反复查看群聊。",
+    "question_date": "2024/12/25 (Wed) 00:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_018-s03",
+      "sh_mh_lme_018-s06",
+      "sh_mh_lme_018-s16"
+    ],
+    "haystack_dates": [
+      "2024/04/29 (Mon) 20:45",
+      "2024/05/29 (Wed) 21:45",
+      "2024/08/17 (Sat) 23:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_018-s03-u1",
+          "role": "user",
+          "content": "最近前组员易舟和我约好每月第一周交换一次近况。有时候我们只聊吃饭和最近看的东西，不一定每次都谈这件事。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_018-s03-a1",
+          "role": "assistant",
+          "content": "这种固定联系的好处是不用等到特别难受才临时找人，也不会把每次联系都变成一次正式复盘。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_018-s06-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“团队结束让我像突然失去共同方向，哪怕新任务已经开始也很难投入”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_018-s06-a1",
+          "role": "assistant",
+          "content": "给旧项目写一页结束记录，然后停止反复查看群聊。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_018-s06-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_018-s06-a2",
+          "role": "assistant",
+          "content": "你可以把成功标准放在“做过一次尝试”，而不是每次都立刻感觉轻松。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_018-s16-u1",
+          "role": "user",
+          "content": "归档时最后确认的是用户访谈原始录音的访问权限，而不是财务表。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_018-s16-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_018-s03",
+      "sh_mh_lme_018-s16",
+      "sh_mh_lme_018-s06"
+    ],
+    "history_id": "sh_mh_lme_018",
+    "capability": "multi-session",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "grief_and_change",
+    "theme": "项目团队解散",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [],
+    "evidence_message_ids": [
+      "sh_mh_lme_018-s03-u1",
+      "sh_mh_lme_018-s16-u1",
+      "sh_mh_lme_018-s06-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "structured_fields",
+      "required_fields": [
+        "support_arrangement",
+        "event_detail",
+        "assistant_plan"
+      ]
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    },
+    "answer_fields": {
+      "support_arrangement": "前组员易舟，每月第一周交换一次近况",
+      "event_detail": "用户访谈原始录音的访问权限",
+      "assistant_plan": "给旧项目写一页结束记录，然后停止反复查看群聊"
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_019",
+    "question_type": "single-session-assistant",
+    "question": "助手在那次讨论中提出了什么可执行的尝试？",
+    "answer": "每次彩排只调整一个指标：语速、停顿或看提纲",
+    "question_date": "2024/12/02 (Mon) 21:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_019-s05"
+    ],
+    "haystack_dates": [
+      "2024/04/03 (Wed) 18:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_019-s05-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“准备内容时还好，一想到台下提问就会把语速越练越快”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_019-s05-a1",
+          "role": "assistant",
+          "content": "每次彩排只调整一个指标：语速、停顿或看提纲。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_019-s05-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_019-s05-a2",
+          "role": "assistant",
+          "content": "先把范围定小一点，通常比同时改很多事情更容易看出效果。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_019-s05"
+    ],
+    "history_id": "sh_mh_lme_019",
+    "capability": "single-session-assistant",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "performance_anxiety",
+    "theme": "公开汇报紧张",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "每次彩排只调整一个指标：语速、停顿或看提纲"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_019-s05-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 37,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_020",
+    "question_type": "single-session-user",
+    "question": "第一次走台时出现了什么设备问题？",
+    "answer": "第二首曲子中段踏板轻微异响",
+    "question_date": "2023/10/12 (Thu) 12:30",
+    "haystack_session_ids": [
+      "sh_mh_lme_020-s18"
+    ],
+    "haystack_dates": [
+      "2023/06/12 (Mon) 10:30"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_020-s18-u1",
+          "role": "user",
+          "content": "第一次走台时，踏板在第二首曲子的中段出现轻微异响。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_020-s18-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_020-s18"
+    ],
+    "history_id": "sh_mh_lme_020",
+    "capability": "single-session-user",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "performance_anxiety",
+    "theme": "音乐演出压力",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "第二首曲子中段踏板轻微异响"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_020-s18-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_021",
+    "question_type": "single-session-preference",
+    "question": "用户明确表示，压力上来时更适合自己的处理顺序是什么？",
+    "answer": "先对现场共同事物提问，不用立刻介绍完整履历",
+    "question_date": "2026/02/03 (Tue) 14:00",
+    "haystack_session_ids": [
+      "sh_mh_lme_021-s12"
+    ],
+    "haystack_dates": [
+      "2025/07/28 (Mon) 08:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_021-s12-u1",
+          "role": "user",
+          "content": "我慢慢发现，压力上来时更适合我的顺序是先对现场共同事物提问，不用立刻介绍完整履历。一开始就逼自己解释清楚，通常只会更乱。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_021-s12-a1",
+          "role": "assistant",
+          "content": "这个顺序既具体，也给了你一点缓冲。重要的是它在真实场景里能不能重复出现。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_021-s12"
+    ],
+    "history_id": "sh_mh_lme_021",
+    "capability": "single-session-preference",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "performance_anxiety",
+    "theme": "行业社交活动",
+    "memory_target": "profile",
+    "answerable": true,
+    "aliases": [
+      "先对现场共同事物提问，不用立刻介绍完整履历"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_021-s12-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 36,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_022",
+    "question_type": "temporal-reasoning",
+    "question": "“第一次康复评估”和“开始第一周走跑交替”哪一件先发生？请按先后顺序回答。",
+    "answer": "先发生“第一次康复评估”，之后发生“开始第一周走跑交替”。",
+    "question_date": "2025/01/09 (Thu) 13:30",
+    "haystack_session_ids": [
+      "sh_mh_lme_022-s11",
+      "sh_mh_lme_022-s20"
+    ],
+    "haystack_dates": [
+      "2024/07/25 (Thu) 07:30",
+      "2024/09/25 (Wed) 12:30"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_022-s11-u1",
+          "role": "user",
+          "content": "第一次康复评估是在周四发生的。我把日期记在了日历里，之后才开始处理下一步。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_022-s11-a1",
+          "role": "assistant",
+          "content": "有明确的时间点很好，之后回看变化时不用只凭模糊印象。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_022-s20-u1",
+          "role": "user",
+          "content": "开始第一周走跑交替比前面的事情晚一些。我当时还特意翻了日历，确认两件事不是同一周发生的。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_022-s20-a1",
+          "role": "assistant",
+          "content": "这样时间关系就比较清楚了，后面不容易把不同阶段的决定混在一起。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_022-s11",
+      "sh_mh_lme_022-s20"
+    ],
+    "history_id": "sh_mh_lme_022",
+    "capability": "temporal-reasoning",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "health_routine",
+    "theme": "运动受伤后的恢复",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "先第一次康复评估，后开始第一周走跑交替",
+      "第一次康复评估在前，开始第一周走跑交替在后"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_022-s11-u1",
+      "sh_mh_lme_022-s20-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "temporal_order",
+      "first": "第一次康复评估",
+      "second": "开始第一周走跑交替"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_023",
+    "question_type": "knowledge-update",
+    "question": "用户早期的做法后来发生了变化；当前有效的安排是什么？",
+    "answer": "出现前兆时先停止屏幕工作，按医生建议休息并调整任务",
+    "question_date": "2024/02/24 (Sat) 10:15",
+    "haystack_session_ids": [
+      "sh_mh_lme_023-s27",
+      "sh_mh_lme_023-s31"
+    ],
+    "haystack_dates": [
+      "2023/11/29 (Wed) 10:15",
+      "2024/01/09 (Tue) 12:15"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_023-s27-u1",
+          "role": "user",
+          "content": "我试了一阵后发现，硬撑到任务完成再休息让我越来越难恢复。这周我改成出现前兆时先停止屏幕工作，按医生建议休息并调整任务，先按这个版本执行。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_023-s27-a1",
+          "role": "assistant",
+          "content": "新做法的范围更清楚，也保留了继续推进事情的空间。先观察它在忙的时候是否仍然可行。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_023-s31-u1",
+          "role": "user",
+          "content": "昨晚忙起来时，我确实又想到过“硬撑到任务完成再休息”，最后还是照着“出现前兆时先停止屏幕工作，按医生建议休息并调整任务”做了。今天回头看，至少没有把原来的节奏全部推翻。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_023-s31-a1",
+          "role": "assistant",
+          "content": "出现旧念头和重新采用旧办法不是一回事。你最后实际执行的行为更能说明现在的安排。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_023-s27",
+      "sh_mh_lme_023-s31"
+    ],
+    "history_id": "sh_mh_lme_023",
+    "capability": "knowledge-update",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "health_routine",
+    "theme": "偏头痛与工作节奏",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [
+      "出现前兆时先停止屏幕工作，按医生建议休息并调整任务"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_023-s27-u1",
+      "sh_mh_lme_023-s31-u1"
+    ],
+    "superseded_message_ids": [
+      "sh_mh_lme_023-s09-u1"
+    ],
+    "evaluation": {
+      "type": "knowledge_update"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 36,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_024",
+    "question_type": "multi-session",
+    "question": "用户的固定支持安排是什么？另外，第一次记录里，最不舒服那天用户怎么吃的？最后，助手提出了什么具体尝试？",
+    "answer": "固定联系是同事莫溪，每周二一起吃午饭；相关具体细节是没有吃早餐，午饭只吃了一个面包；助手建议会前准备温水和简单食物，长会议中间安排十分钟休息。",
+    "question_date": "2024/12/24 (Tue) 07:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_024-s05",
+      "sh_mh_lme_024-s10",
+      "sh_mh_lme_024-s18"
+    ],
+    "haystack_dates": [
+      "2024/04/25 (Thu) 10:45",
+      "2024/05/29 (Wed) 11:45",
+      "2024/08/03 (Sat) 09:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_024-s05-u1",
+          "role": "user",
+          "content": "最近同事莫溪和我约好每周二一起吃午饭。有时候我们只聊吃饭和最近看的东西，不一定每次都谈这件事。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_024-s05-a1",
+          "role": "assistant",
+          "content": "这种固定联系的好处是不用等到特别难受才临时找人，也不会把每次联系都变成一次正式复盘。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_024-s10-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“一不舒服就会担心影响会议，于是早上干脆不吃东西，结果下午更难受”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_024-s10-a1",
+          "role": "assistant",
+          "content": "会前准备温水和简单食物，长会议中间安排十分钟休息。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_024-s10-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_024-s10-a2",
+          "role": "assistant",
+          "content": "这个安排足够具体，之后更容易判断它到底有没有帮助。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_024-s18-u1",
+          "role": "user",
+          "content": "第一次记录中，最不舒服的那天早餐完全没吃，午饭只吃了一个面包。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_024-s18-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_024-s05",
+      "sh_mh_lme_024-s18",
+      "sh_mh_lme_024-s10"
+    ],
+    "history_id": "sh_mh_lme_024",
+    "capability": "multi-session",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "health_routine",
+    "theme": "肠胃不适与压力节奏",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [],
+    "evidence_message_ids": [
+      "sh_mh_lme_024-s05-u1",
+      "sh_mh_lme_024-s18-u1",
+      "sh_mh_lme_024-s10-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "structured_fields",
+      "required_fields": [
+        "support_arrangement",
+        "event_detail",
+        "assistant_plan"
+      ]
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    },
+    "answer_fields": {
+      "support_arrangement": "同事莫溪，每周二一起吃午饭",
+      "event_detail": "没有吃早餐，午饭只吃了一个面包",
+      "assistant_plan": "会前准备温水和简单食物，长会议中间安排十分钟休息"
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_025",
+    "question_type": "multi-session",
+    "question": "请依次给出固定支持安排、相关事件的具体细节（简历中需要补充的具体项目成果是什么）和助手的试行建议。",
+    "answer": "固定联系是前同事齐朗，每周四交换一次求职进度；相关具体细节是把支付项目失败率从3.2%降到1.1%；助手建议每天固定九十分钟求职，时间结束后回到生活安排。",
+    "question_date": "2023/12/27 (Wed) 13:15",
+    "haystack_session_ids": [
+      "sh_mh_lme_025-s05",
+      "sh_mh_lme_025-s08",
+      "sh_mh_lme_025-s19"
+    ],
+    "haystack_dates": [
+      "2023/05/15 (Mon) 11:15",
+      "2023/06/04 (Sun) 10:15",
+      "2023/08/29 (Tue) 12:15"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_025-s05-u1",
+          "role": "user",
+          "content": "最近前同事齐朗和我约好每周四交换一次求职进度。有时候我们只聊吃饭和最近看的东西，不一定每次都谈这件事。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_025-s05-a1",
+          "role": "assistant",
+          "content": "这种固定联系的好处是不用等到特别难受才临时找人，也不会把每次联系都变成一次正式复盘。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_025-s08-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“每天投递很多岗位能暂时缓解焦虑，但也让我没有时间准备真正合适的面试”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_025-s08-a1",
+          "role": "assistant",
+          "content": "每天固定九十分钟求职，时间结束后回到生活安排。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_025-s08-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_025-s08-a2",
+          "role": "assistant",
+          "content": "先按这个版本走一段，再根据实际情况改，不用现在把所有以后都决定完。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_025-s19-u1",
+          "role": "user",
+          "content": "简历里最需要补充的是把支付项目的失败率从百分之三点二降到百分之一点一。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_025-s19-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_025-s05",
+      "sh_mh_lme_025-s19",
+      "sh_mh_lme_025-s08"
+    ],
+    "history_id": "sh_mh_lme_025",
+    "capability": "multi-session",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "career_uncertainty",
+    "theme": "裁员后的求职",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [],
+    "evidence_message_ids": [
+      "sh_mh_lme_025-s05-u1",
+      "sh_mh_lme_025-s19-u1",
+      "sh_mh_lme_025-s08-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "structured_fields",
+      "required_fields": [
+        "support_arrangement",
+        "event_detail",
+        "assistant_plan"
+      ]
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    },
+    "answer_fields": {
+      "support_arrangement": "前同事齐朗，每周四交换一次求职进度",
+      "event_detail": "把支付项目失败率从3.2%降到1.1%",
+      "assistant_plan": "每天固定九十分钟求职，时间结束后回到生活安排"
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_026",
+    "question_type": "knowledge-update",
+    "question": "用户目前实际采用的主要安排是什么？",
+    "answer": "按固定金额偿还并保留基本应急金",
+    "question_date": "2025/01/28 (Tue) 12:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_026-s23",
+      "sh_mh_lme_026-s28"
+    ],
+    "haystack_dates": [
+      "2024/09/19 (Thu) 14:45",
+      "2024/10/24 (Thu) 13:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_026-s23-u1",
+          "role": "user",
+          "content": "我试了一阵后发现，只要有结余就一次性多还很多让我越来越难恢复。这周我改成按固定金额偿还并保留基本应急金，先按这个版本执行。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_026-s23-a1",
+          "role": "assistant",
+          "content": "新做法的范围更清楚，也保留了继续推进事情的空间。先观察它在忙的时候是否仍然可行。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_026-s28-u1",
+          "role": "user",
+          "content": "昨晚忙起来时，我确实又想到过“只要有结余就一次性多还很多”，最后还是照着“按固定金额偿还并保留基本应急金”做了。今天回头看，至少没有把原来的节奏全部推翻。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_026-s28-a1",
+          "role": "assistant",
+          "content": "出现旧念头和重新采用旧办法不是一回事。你最后实际执行的行为更能说明现在的安排。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_026-s23",
+      "sh_mh_lme_026-s28"
+    ],
+    "history_id": "sh_mh_lme_026",
+    "capability": "knowledge-update",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "career_uncertainty",
+    "theme": "债务偿还与羞耻感",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [
+      "按固定金额偿还并保留基本应急金"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_026-s23-u1",
+      "sh_mh_lme_026-s28-u1"
+    ],
+    "superseded_message_ids": [
+      "sh_mh_lme_026-s05-u1"
+    ],
+    "evaluation": {
+      "type": "knowledge_update"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 38,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_027",
+    "question_type": "multi-session",
+    "question": "综合不同阶段的对话，请说明用户的固定支持安排；回答“书面流程说明中，谁会在什么时候统一通知？”；并写出助手当时给出的试行方法。",
+    "answer": "固定联系是同事裴雯，每周五午休一起散步；相关具体细节是人力部门会在月底前统一通知；助手建议每天只给续签担忧留十五分钟，之后继续当前任务。",
+    "question_date": "2023/12/25 (Mon) 19:15",
+    "haystack_session_ids": [
+      "sh_mh_lme_027-s03",
+      "sh_mh_lme_027-s07",
+      "sh_mh_lme_027-s19"
+    ],
+    "haystack_dates": [
+      "2023/04/10 (Mon) 18:15",
+      "2023/05/11 (Thu) 20:15",
+      "2023/08/15 (Tue) 20:15"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_027-s03-u1",
+          "role": "user",
+          "content": "最近同事裴雯和我约好每周五午休一起散步。有时候我们只聊吃饭和最近看的东西，不一定每次都谈这件事。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_027-s03-a1",
+          "role": "assistant",
+          "content": "这种固定联系的好处是不用等到特别难受才临时找人，也不会把每次联系都变成一次正式复盘。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_027-s07-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“续签结果没有下来时，我会把每个排班变化都理解成不好的信号”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_027-s07-a1",
+          "role": "assistant",
+          "content": "每天只给续签担忧留十五分钟，之后继续当前任务。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_027-s07-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_027-s07-a2",
+          "role": "assistant",
+          "content": "先把范围定小一点，通常比同时改很多事情更容易看出效果。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_027-s19-u1",
+          "role": "user",
+          "content": "流程说明写的是人力部门会在月底前统一通知，不是由项目经理单独决定。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_027-s19-a1",
+          "role": "assistant",
+          "content": "这个细节很具体。把具体发生了什么留下来，比只记住“那次很糟”更有用。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_027-s03",
+      "sh_mh_lme_027-s19",
+      "sh_mh_lme_027-s07"
+    ],
+    "history_id": "sh_mh_lme_027",
+    "capability": "multi-session",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "career_uncertainty",
+    "theme": "合同续签等待",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [],
+    "evidence_message_ids": [
+      "sh_mh_lme_027-s03-u1",
+      "sh_mh_lme_027-s19-u1",
+      "sh_mh_lme_027-s07-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "structured_fields",
+      "required_fields": [
+        "support_arrangement",
+        "event_detail",
+        "assistant_plan"
+      ]
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 35,
+      "oracle": true
+    },
+    "answer_fields": {
+      "support_arrangement": "同事裴雯，每周五午休一起散步",
+      "event_detail": "人力部门会在月底前统一通知",
+      "assistant_plan": "每天只给续签担忧留十五分钟，之后继续当前任务"
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_028",
+    "question_type": "single-session-assistant",
+    "question": "用户请求一个小调整时，助手具体建议了什么？",
+    "answer": "写作时关闭修订功能四十五分钟，结束后再标记问题",
+    "question_date": "2025/03/05 (Wed) 12:00",
+    "haystack_session_ids": [
+      "sh_mh_lme_028-s08"
+    ],
+    "haystack_dates": [
+      "2024/07/21 (Sun) 10:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_028-s08-u1",
+          "role": "user",
+          "content": "我想试一个小一点的调整，主要针对“写不顺时我会不断改第一章，后面的内容一直没有开始”，但不想再做一套很复杂的计划。"
+        },
+        {
+          "message_id": "sh_mh_lme_028-s08-a1",
+          "role": "assistant",
+          "content": "写作时关闭修订功能四十五分钟，结束后再标记问题。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_028-s08-u2",
+          "role": "user",
+          "content": "这个范围我能接受。我先做一周，看看在什么情况下有用。"
+        },
+        {
+          "message_id": "sh_mh_lme_028-s08-a2",
+          "role": "assistant",
+          "content": "这个顺序把恢复空间也算进去了，不需要靠一直绷着来维持。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_028-s08"
+    ],
+    "history_id": "sh_mh_lme_028",
+    "capability": "single-session-assistant",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "creative_overload",
+    "theme": "写作阻滞与自我要求",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "写作时关闭修订功能四十五分钟，结束后再标记问题"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_028-s08-a1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "semantic_short_answer"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 37,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_029",
+    "question_type": "temporal-reasoning",
+    "question": "“第一次发布群沟通时间”和“完成一周按新规则回复”哪一件先发生？请按先后顺序回答。",
+    "answer": "先发生“第一次发布群沟通时间”，之后发生“完成一周按新规则回复”。",
+    "question_date": "2024/12/21 (Sat) 23:45",
+    "haystack_session_ids": [
+      "sh_mh_lme_029-s12",
+      "sh_mh_lme_029-s22"
+    ],
+    "haystack_dates": [
+      "2024/07/10 (Wed) 21:45",
+      "2024/09/17 (Tue) 18:45"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_029-s12-u1",
+          "role": "user",
+          "content": "第一次发布群沟通时间是在周四发生的。我把日期记在了日历里，之后才开始处理下一步。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_029-s12-a1",
+          "role": "assistant",
+          "content": "有明确的时间点很好，之后回看变化时不用只凭模糊印象。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_029-s22-u1",
+          "role": "user",
+          "content": "完成一周按新规则回复比前面的事情晚一些。我当时还特意翻了日历，确认两件事不是同一周发生的。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_029-s22-a1",
+          "role": "assistant",
+          "content": "这样时间关系就比较清楚了，后面不容易把不同阶段的决定混在一起。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_029-s12",
+      "sh_mh_lme_029-s22"
+    ],
+    "history_id": "sh_mh_lme_029",
+    "capability": "temporal-reasoning",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "creative_overload",
+    "theme": "教师工作耗竭",
+    "memory_target": "episodic",
+    "answerable": true,
+    "aliases": [
+      "先第一次发布群沟通时间，后完成一周按新规则回复",
+      "第一次发布群沟通时间在前，完成一周按新规则回复在后"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_029-s12-u1",
+      "sh_mh_lme_029-s22-u1"
+    ],
+    "superseded_message_ids": [],
+    "evaluation": {
+      "type": "temporal_order",
+      "first": "第一次发布群沟通时间",
+      "second": "完成一周按新规则回复"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    }
+  },
+  {
+    "question_id": "sh_mh_lme_030",
+    "question_type": "knowledge-update",
+    "question": "用户目前没有继续沿用最初的做法。现在实际采用什么安排？",
+    "answer": "发布后二十四小时不改标题，只在固定复盘时查看完整数据",
+    "question_date": "2023/10/01 (Sun) 11:15",
+    "haystack_session_ids": [
+      "sh_mh_lme_030-s23",
+      "sh_mh_lme_030-s29"
+    ],
+    "haystack_dates": [
+      "2023/06/27 (Tue) 10:15",
+      "2023/08/13 (Sun) 11:15"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "message_id": "sh_mh_lme_030-s23-u1",
+          "role": "user",
+          "content": "我试了一阵后发现，发布后每半小时查看一次数据让我越来越难恢复。这周我改成发布后二十四小时不改标题，只在固定复盘时查看完整数据，先按这个版本执行。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_030-s23-a1",
+          "role": "assistant",
+          "content": "新做法的范围更清楚，也保留了继续推进事情的空间。先观察它在忙的时候是否仍然可行。"
+        }
+      ],
+      [
+        {
+          "message_id": "sh_mh_lme_030-s29-u1",
+          "role": "user",
+          "content": "昨晚忙起来时，我确实又想到过“发布后每半小时查看一次数据”，最后还是照着“发布后二十四小时不改标题，只在固定复盘时查看完整数据”做了。今天回头看，至少没有把原来的节奏全部推翻。",
+          "has_answer": true
+        },
+        {
+          "message_id": "sh_mh_lme_030-s29-a1",
+          "role": "assistant",
+          "content": "出现旧念头和重新采用旧办法不是一回事。你最后实际执行的行为更能说明现在的安排。"
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "sh_mh_lme_030-s23",
+      "sh_mh_lme_030-s29"
+    ],
+    "history_id": "sh_mh_lme_030",
+    "capability": "knowledge-update",
+    "domain": "mental-health-adjacent-longitudinal-support",
+    "category": "creative_overload",
+    "theme": "内容创作与数据焦虑",
+    "memory_target": "both",
+    "answerable": true,
+    "aliases": [
+      "发布后二十四小时不改标题，只在固定复盘时查看完整数据"
+    ],
+    "evidence_message_ids": [
+      "sh_mh_lme_030-s23-u1",
+      "sh_mh_lme_030-s29-u1"
+    ],
+    "superseded_message_ids": [
+      "sh_mh_lme_030-s06-u1"
+    ],
+    "evaluation": {
+      "type": "knowledge_update"
+    },
+    "metadata": {
+      "language": "zh-CN",
+      "synthetic": true,
+      "contains_diagnosis": false,
+      "contains_self_harm": false,
+      "session_count": 34,
+      "oracle": true
+    }
+  }
+]

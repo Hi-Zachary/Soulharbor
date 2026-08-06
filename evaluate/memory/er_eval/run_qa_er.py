@@ -328,13 +328,59 @@ def run_case(case: Dict[str, Any], *, llm: Any, work_dir: Path, qa_workers: int)
 
         questions = list(case.get("test_questions") or [])
         if qa_workers <= 1 or len(questions) <= 1:
-            answers = [_answer_one(llm, engine, q) for q in questions]
+            answers = []
+            for q in questions:
+                try:
+                    answers.append(_answer_one(llm, engine, q))
+                except Exception as qexc:
+                    answers.append(
+                        {
+                            "qid": q.get("qid"),
+                            "type": q.get("type"),
+                            "probes": q.get("probes"),
+                            "correct": False,
+                            "error": f"{type(qexc).__name__}: {qexc}",
+                            "raw": "",
+                            "pred": "",
+                            "gold": q.get("gold"),
+                        }
+                    )
         else:
             with ThreadPoolExecutor(max_workers=min(qa_workers, len(questions))) as qex:
-                futs = [qex.submit(_answer_one, llm, engine, q) for q in questions]
-                answers = [f.result() for f in futs]
+                futs = {qex.submit(_answer_one, llm, engine, q): q for q in questions}
+                answers = []
+                for fut in as_completed(futs):
+                    q = futs[fut]
+                    try:
+                        answers.append(fut.result())
+                    except Exception as qexc:
+                        answers.append(
+                            {
+                                "qid": q.get("qid"),
+                                "type": q.get("type"),
+                                "probes": q.get("probes"),
+                                "correct": False,
+                                "error": f"{type(qexc).__name__}: {qexc}",
+                                "raw": "",
+                                "pred": "",
+                                "gold": q.get("gold"),
+                            }
+                        )
+            # keep original question order
+            order = {str(q.get("qid")): i for i, q in enumerate(questions)}
+            answers.sort(key=lambda a: order.get(str(a.get("qid")), 10**9))
 
-        f1 = content_f1(llm, facts=engine.list_facts(), gold_facts=dict(case.get("gold_facts") or {}))
+        try:
+            f1 = content_f1(
+                llm, facts=engine.list_facts(), gold_facts=dict(case.get("gold_facts") or {})
+            )
+        except Exception as f1exc:
+            f1 = {
+                "precision": None,
+                "recall": None,
+                "f1": None,
+                "error": f"{type(f1exc).__name__}: {f1exc}",
+            }
         score = score_questions(answers)
         score["content_f1"] = f1.get("f1")
         out["methods"]["trace"] = {
@@ -484,6 +530,8 @@ def main() -> None:
     with _PRINT_LOCK:
         print(
             f"[run] cases={len(cases)} workers={args.workers} qa_workers={args.qa_workers} "
+            f"max_concurrent_api={cfg.get('max_concurrent_api')} "
+            f"max_retries={cfg.get('max_retries')} "
             f"data={args.data} out={run_dir}"
         )
 
@@ -509,9 +557,29 @@ def main() -> None:
             results.append(_one(case))
     else:
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
-            futs = [ex.submit(_one, c) for c in cases]
+            futs = {ex.submit(_one, c): c for c in cases}
             for fut in as_completed(futs):
-                results.append(fut.result())
+                case = futs[fut]
+                try:
+                    results.append(fut.result())
+                except Exception as exc:
+                    cid = str(case.get("case_id"))
+                    row = {
+                        "case_id": cid,
+                        "category": case.get("category"),
+                        "methods": {
+                            "trace": {
+                                "method": "trace",
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        },
+                    }
+                    with _WRITE_LOCK:
+                        with results_path.open("a", encoding="utf-8") as f:
+                            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    with _PRINT_LOCK:
+                        print(f"  [{cid}] FATAL {type(exc).__name__}: {exc}")
+                    results.append(row)
 
     # stable order
     order = {str(c["case_id"]): i for i, c in enumerate(cases)}

@@ -244,34 +244,8 @@ def _snip_for_query(
     return _span_from_scores(units, scores, limit)
 
 
-def _pick_user_turns(
-    window: Span,
-    *,
-    query: str = "",
-    max_msgs: int = 6,
-) -> List[SpanTurn]:
-    """Keep user lines only; hard-retain anchors, then fill with relevant neighbors."""
-    users = [turn for turn in window.messages if turn.role == "user"]
-    if not users:
-        return []
-
-    limit = max(1, int(max_msgs))
-    anchors = [turn for turn in users if turn.is_anchor]
-    others = [turn for turn in users if not turn.is_anchor]
-
-    # Never silently drop anchors when a merged window carries many of them.
-    limit = max(limit, len(anchors))
-
-    chosen = list(anchors)
-    remaining = limit - len(chosen)
-    if remaining > 0:
-        others.sort(
-            key=lambda turn: _relevance(turn, query),
-            reverse=True,
-        )
-        chosen.extend(others[:remaining])
-
-    return sorted(chosen, key=lambda turn: turn.position)
+def _pick_display_turns(window: Span) -> List[SpanTurn]:
+    return sorted(window.messages, key=lambda turn: (turn.position, turn.message_id))
 
 
 def _budget_for(turn: SpanTurn) -> int:
@@ -288,7 +262,18 @@ def _lines_for_window(
     snip_plan: Optional[Dict[int, Tuple[List[str], List[float]]]] = None,
 ) -> List[str]:
     lines: List[str] = []
-    for turn in _pick_user_turns(window, query=query, max_msgs=max_msgs):
+    current_section = ""
+    section_titles = {
+        "earlier": "[较早的用户消息]",
+        "anchor": "[检索命中的对话轮次]",
+        "later": "[后续用户消息]",
+    }
+    for turn in _pick_display_turns(window):
+        if turn.segment != current_section:
+            current_section = turn.segment
+            title = section_titles.get(current_section)
+            if title:
+                lines.append(title)
         budget = _budget_for(turn)
         if turn.is_anchor and _match_in_content(turn.content, turn.matched_chunk):
             text = _snip_around_match(
@@ -317,13 +302,10 @@ def _lines_for_window(
                 )
         day = _date_label(turn.created_at)
         star = "★ " if turn.is_anchor else ""
-        when = f"记录于 {day}：" if day else ""
+        when = f"（{day}）" if day else ""
         safe = escape(text, quote=False)
-        lines.append(f"- {star}{when}用户：{safe}")
-        lines.append(
-            f"  来源：conversation={window.conversation_id}, "
-            f"message={turn.message_id}, pos={turn.position}"
-        )
+        role = "用户" if turn.role == "user" else "助手"
+        lines.append(f"{star}{role}{when}：{safe}")
     return lines
 
 
@@ -340,14 +322,14 @@ def _prepare_snip_batch(
     embedder: MemoryEmbedder,
 ) -> Tuple[Optional[List[float]], Dict[int, Tuple[List[str], List[float]]]]:
     """
-    One query embed + one sentence embed_batch for all long user messages
+    One query embed + one sentence embed_batch for all long messages
     that will actually be formatted.
     """
     jobs: List[Tuple[int, List[str]]] = []  # turn id(obj) → sentences
     all_sentences: List[str] = []
 
     for window in windows:
-        for turn in _pick_user_turns(window, query=query):
+        for turn in _pick_display_turns(window):
             if turn.is_anchor and _match_in_content(turn.content, turn.matched_chunk):
                 continue
             cleaned = (turn.content or "").strip().replace("\n", " ")
@@ -392,21 +374,28 @@ def format_sections(
     snip_plan: Dict[int, Tuple[List[str], List[float]]] = {}
 
     if bundles:
-        # Chronological injection: no explicit cross-session chain_id.
+        # Chronological injection of independent retrieved windows.
         ordered = sorted(bundles, key=lambda w: (_earliest_ts(w), w.conversation_id))
         # Batch semantic snips only when at least one message exceeds the soft cap.
         needs_snip = any(
             not (t.is_anchor and _match_in_content(t.content, t.matched_chunk))
             and len((t.content or "").strip()) > _budget_for(t)
             for w in ordered
-            for t in _pick_user_turns(w, query=query)
+            for t in _pick_display_turns(w)
         )
         if needs_snip:
             model = model or MemoryEmbedder.shared()
             query_vec, snip_plan = _prepare_snip_batch(ordered, query=query, embedder=model)
 
-        parts.append("[相关经历证据]")
-        for window in ordered:
+        parts.append(
+            "以下历史记忆是检索得到的非连续片段。"
+            "“检索命中的对话轮次”保留该轮公开问答；"
+            "“较早的用户消息”和“后续用户消息”只用于补充用户表达，"
+            "中间可能省略其他对话，不应视为连续聊天记录。"
+        )
+        for idx, window in enumerate(ordered, start=1):
+            parts.append("")
+            parts.append(f'<retrieved_memory index="{idx}">')
             parts.extend(
                 _lines_for_window(
                     window,
@@ -416,6 +405,7 @@ def format_sections(
                     snip_plan=snip_plan,
                 )
             )
+            parts.append("</retrieved_memory>")
             parts.append("")
 
     while parts and parts[-1] == "":
