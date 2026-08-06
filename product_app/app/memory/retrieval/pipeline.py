@@ -7,7 +7,7 @@ from typing import Any, List, Optional, Set, Tuple
 
 from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.embeddings import MemoryEmbedder
-from product_app.app.memory.models import Span, ProfileItem, RetrievalTrace
+from product_app.app.memory.models import Span, RetrievalTrace
 from product_app.app.memory.profile.service import ProfileService
 from product_app.app.memory.retrieval.direct import DirectRetriever
 from product_app.app.memory.retrieval.router import QueryRouter
@@ -74,7 +74,7 @@ class RetrievalPipeline:
         user_id: int,
         query: str,
         exclude_message_ids: Optional[Set[int]] = None,
-    ) -> Tuple[List[Span], List[ProfileItem], RetrievalTrace]:
+    ) -> Tuple[List[Span], RetrievalTrace]:
         started = time.time()
         trace = RetrievalTrace(
             stitch_mode=str(mem_cfg.stitch_mode),
@@ -105,16 +105,21 @@ class RetrievalPipeline:
             rrf_count = len(anchors)
             # Formatter only injects user turns; drop assistant anchors before CE.
             anchors = [hit for hit in anchors if hit.role == "user"]
+            planner_queries = (
+                list(plan.queries[:3]) if plan.mode == "split" else []
+            )
             anchors = self._anchor_ce.select(
                 original_query=query,
-                planner_queries=list(plan.queries),
+                planner_queries=planner_queries,
                 anchors=anchors,
             )
             anchors = collapse_anchor_chunks(anchors)
             unique_messages = len({hit.message_id for hit in anchors})
 
             trace.extra["anchor_ce"] = 1
-            trace.extra["anchor_ce_mode"] = "coverage"
+            trace.extra["anchor_ce_mode"] = (
+                "split" if planner_queries else "direct"
+            )
             trace.extra["rrf_anchors"] = rrf_count
             trace.extra["rrf_anchor_count"] = rrf_count
             trace.extra["ce_anchors"] = len(anchors)
@@ -134,26 +139,20 @@ class RetrievalPipeline:
             windows = merge_windows(windows)
             trace.extra["merged_window_count"] = len(windows)
 
-            # Candidate ceiling from config (default 12); budget packing follows in builder.
             windows = select_windows(
                 bundles=windows,
                 limit=mem_cfg.bundle_top_k,
             )
             trace.extra["topk_window_count"] = len(windows)
-            # Record time only affects display order (budget packing re-ranks by CE).
             windows = sort_by_time(windows)
             trace.linked_chains = 0
             trace.bundles = len(windows)
-
-            profiles: List[ProfileItem] = []
-            if mem_cfg.profile_enabled:
-                profiles = self._profile.list_for_inject(user_id)
-            trace.profile_hits = len(profiles)
-            return windows, profiles, trace
+            trace.profile_hits = 0
+            return windows, trace
 
         except Exception:
             logger.warning("memory retrieval failed for user=%s", user_id, exc_info=True)
             trace.fallback = True
-            return [], [], trace
+            return [], trace
         finally:
             trace.latency_ms = int((time.time() - started) * 1000)

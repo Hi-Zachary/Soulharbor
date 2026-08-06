@@ -1,12 +1,18 @@
-"""Assemble the final <memory> … </memory> injection block."""
+"""Assemble <user_profile> + <memory> injection with separate budgets."""
 from __future__ import annotations
 
+import logging
 from typing import Callable, List, Optional, Tuple
 
+from product_app.app.memory.config import mem_cfg
 from product_app.app.memory.context.formatter import format_sections
-from product_app.app.memory.context.token_budget import estimate_tokens, trim_lines_to_budget
+from product_app.app.memory.context.profile_formatter import render_user_profile
+from product_app.app.memory.context.token_budget import trim_lines_to_budget
 from product_app.app.memory.models import Span, ProfileItem
 from product_app.app.memory.store.select import sort_by_time
+from product_app.app.memory.token_utils import count_tokens
+
+logger = logging.getLogger(__name__)
 
 
 def _ce_key(window: Span) -> tuple[float, float]:
@@ -16,17 +22,13 @@ def _ce_key(window: Span) -> tuple[float, float]:
 def pack_windows_to_budget(
     bundles: List[Span],
     *,
-    profiles: List[ProfileItem],
+    profiles: List[ProfileItem] | None = None,
     token_budget: int,
     token_counter: Optional[Callable[[str], int]] = None,
     query: str = "",
 ) -> List[Span]:
-    """Pack by CE relevance under token budget; skip (do not stop on) oversized windows.
-
-    ``bundle_top_k`` only caps how many candidates reach this stage. A long window
-    that does not fit must be skipped so later shorter windows can still enter.
-    Chronological order is applied only after packing, for display.
-    """
+    """Pack episodic windows by CE under token budget (profiles not in this budget)."""
+    del profiles  # profile block is budgeted separately
     if not bundles:
         return []
     ranked = sorted(bundles, key=_ce_key, reverse=True)
@@ -35,13 +37,12 @@ def pack_windows_to_budget(
         trial = packed + [window]
         lines = format_sections(
             bundles=sort_by_time(trial),
-            profiles=profiles,
+            profiles=[],
             query=query,
         )
         body = "\n".join(lines).strip()
         block = f"<memory>\n{body}\n</memory>" if body else ""
-        cost = estimate_tokens(block, token_counter) if block else 0
-        # Skip this candidate and keep trying later (often shorter) windows.
+        cost = count_tokens(block, token_counter) if block else 0
         if cost > int(token_budget):
             continue
         packed.append(window)
@@ -49,9 +50,8 @@ def pack_windows_to_budget(
 
 
 def _drop_trailing_pairs(kept: List[str], token_budget: int, token_counter) -> List[str]:
-    """Safety trim: drop whole evidence pairs (body + source), never split them."""
     body = "\n".join(kept).strip()
-    while estimate_tokens(body, token_counter) > token_budget and len(kept) > 1:
+    while count_tokens(body, token_counter) > token_budget and len(kept) > 1:
         if (
             len(kept) >= 2
             and kept[-1].startswith("  来源：")
@@ -66,6 +66,31 @@ def _drop_trailing_pairs(kept: List[str], token_budget: int, token_counter) -> L
     return kept
 
 
+def build_episodic_memory_block(
+    *,
+    windows: List[Span],
+    query: str = "",
+    token_budget: int,
+    token_counter: Optional[Callable[[str], int]] = None,
+) -> Tuple[str, int]:
+    packed = pack_windows_to_budget(
+        windows,
+        token_budget=token_budget,
+        token_counter=token_counter,
+        query=query,
+    )
+    chrono = sort_by_time(packed)
+    lines = format_sections(bundles=chrono, profiles=[], query=query)
+    if not lines:
+        return "", 0
+    kept = trim_lines_to_budget(lines, max_tokens=token_budget, counter=token_counter)
+    kept = _drop_trailing_pairs(kept, token_budget, token_counter)
+    body = "\n".join(kept).strip()
+    if not body:
+        return "", len(packed)
+    return f"<memory>\n{body}\n</memory>", len(packed)
+
+
 def build_memory_block(
     *,
     bundles: List[Span],
@@ -74,24 +99,31 @@ def build_memory_block(
     token_counter: Optional[Callable[[str], int]] = None,
     query: str = "",
 ) -> Tuple[str, int]:
-    """Return ``(memory_block, packed_window_count)``."""
-    packed = pack_windows_to_budget(
-        bundles,
-        profiles=profiles,
-        token_budget=token_budget,
-        token_counter=token_counter,
+    """Return ``(combined_block, packed_window_count)``.
+
+    Profile is rendered fully first (capped by persistence limits). Remaining
+    budget goes to episodic ``<memory>``.
+    """
+    profile_block = render_user_profile(profiles) if mem_cfg.profile_enabled else ""
+    profile_tokens = count_tokens(profile_block, token_counter)
+    if profile_tokens > int(mem_cfg.profile_block_max_tokens):
+        logger.error(
+            "profile block exceeds limit: tokens=%s max=%s",
+            profile_tokens,
+            mem_cfg.profile_block_max_tokens,
+        )
+        profile_block = ""
+        profile_tokens = 0
+
+    episodic_budget = max(0, int(token_budget) - profile_tokens)
+    episodic_block, packed_count = build_episodic_memory_block(
+        windows=bundles,
         query=query,
+        token_budget=episodic_budget,
+        token_counter=token_counter,
     )
-    chrono = sort_by_time(packed)
-    lines = format_sections(bundles=chrono, profiles=profiles, query=query)
-    if not lines:
+
+    parts = [b for b in (profile_block, episodic_block) if b]
+    if not parts:
         return "", 0
-
-    # Safety net only: packing already prefers CE order; avoid chopping late CE hits.
-    kept = trim_lines_to_budget(lines, max_tokens=token_budget, counter=token_counter)
-    kept = _drop_trailing_pairs(kept, token_budget, token_counter)
-    body = "\n".join(kept).strip()
-    if not body:
-        return "", len(packed)
-
-    return f"<memory>\n{body}\n</memory>", len(packed)
+    return "\n\n".join(parts), packed_count

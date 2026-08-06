@@ -1,16 +1,20 @@
-"""Strict allowlist for long-term user profile fields (narrower than MemMachine)."""
+"""Long-term profile fields: example taxonomy + structural normalize (not a hard allowlist)."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, Optional, Set, Tuple
 
-# tag -> allowed features. Only these may be written.
-ALLOWED: Dict[str, FrozenSet[str]] = {
+# Common categories shown in prompts — examples only, not exhaustive.
+EXAMPLE_FIELDS: Dict[str, FrozenSet[str]] = {
     "identity": frozenset({"name", "gender", "age"}),
     "education": frozenset({"school", "grade", "major", "degree"}),
     "location": frozenset({"hometown", "residence"}),
     "preference": frozenset({"communication", "hobby", "lifestyle", "other"}),
 }
+
+# Back-compat alias for older imports / docs snippets.
+ALLOWED = EXAMPLE_FIELDS
 
 TAG_LABELS = {
     "identity": "身份",
@@ -34,6 +38,8 @@ FEATURE_LABELS = {
     "lifestyle": "生活习惯",
     "other": "其他偏好",
 }
+
+_SLUG_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 
 @dataclass(frozen=True)
@@ -69,11 +75,13 @@ def parse_content_key(content: str) -> Optional[Tuple[str, str]]:
     return None
 
 
+def is_valid_slug(s: str) -> bool:
+    return bool(_SLUG_RE.match((s or "").strip().lower()))
+
+
 def is_allowed(tag: str, feature: str) -> bool:
-    feats = ALLOWED.get((tag or "").strip())
-    if not feats:
-        return False
-    return (feature or "").strip() in feats
+    """Structural check: tag/feature must be valid slugs (not an example-field allowlist)."""
+    return is_valid_slug(tag) and is_valid_slug(feature)
 
 
 def normalize_fact(
@@ -96,9 +104,9 @@ def normalize_fact(
     return ProfileFact(tag=t, feature=f, value=v)
 
 
-def allowed_prompt_block() -> str:
-    lines = []
-    for tag, feats in ALLOWED.items():
+def example_prompt_block() -> str:
+    lines = ["常见类别示例（非穷尽，可按同样结构自拟 tag/feature）："]
+    for tag, feats in EXAMPLE_FIELDS.items():
         label = TAG_LABELS.get(tag, tag)
         feat_txt = "、".join(
             f"{f}({FEATURE_LABELS.get(f, f)})" for f in sorted(feats)
@@ -107,5 +115,10 @@ def allowed_prompt_block() -> str:
     return "\n".join(lines)
 
 
+def allowed_prompt_block() -> str:
+    """Back-compat name used by older call sites."""
+    return example_prompt_block()
+
+
 def all_keys() -> Set[str]:
-    return {f"{t}/{f}" for t, feats in ALLOWED.items() for f in feats}
+    return {f"{t}/{f}" for t, feats in EXAMPLE_FIELDS.items() for f in feats}

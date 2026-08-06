@@ -29,12 +29,31 @@ class MemorySettings:
     backend: str = _backend()
     store_enabled: bool = _b("MEMORY_STORE_ENABLED", "1")
     profile_enabled: bool = _b("MEMORY_PROFILE_ENABLED", "1")
-    # After assistant turns, Chinese LLM may extract allowlisted long-term facts.
+    # After user turns, Chinese LLM may maintain long-term profile facts.
     profile_llm_propose: bool = _b("MEMORY_PROFILE_LLM_PROPOSE", "1")
     profile_llm_propose_max: int = int(os.environ.get("MEMORY_PROFILE_LLM_PROPOSE_MAX", "3"))
-    # Legacy flag (pending queue removed); kept so old env files still load.
+    profile_max_operations: int = int(
+        os.environ.get(
+            "MEMORY_PROFILE_MAX_OPERATIONS",
+            os.environ.get("MEMORY_PROFILE_LLM_PROPOSE_MAX", "3"),
+        )
+    )
+    # Hard caps on active profile rows / tokens (code-enforced).
+    profile_max_active: int = int(os.environ.get("MEMORY_PROFILE_MAX_ACTIVE", "20"))
+    profile_item_target_chars: int = int(
+        os.environ.get("MEMORY_PROFILE_ITEM_TARGET_CHARS", "40")
+    )
+    profile_item_max_chars: int = int(
+        os.environ.get("MEMORY_PROFILE_ITEM_MAX_CHARS", "64")
+    )
+    profile_item_max_tokens: int = int(
+        os.environ.get("MEMORY_PROFILE_ITEM_MAX_TOKENS", "48")
+    )
+    profile_block_max_tokens: int = int(
+        os.environ.get("MEMORY_PROFILE_BLOCK_MAX_TOKENS", "640")
+    )
+    # Legacy flags kept so old env files still load.
     profile_llm_skip_if_pending: bool = _b("MEMORY_PROFILE_LLM_SKIP_IF_PENDING", "0")
-    # Batch-gated extract: after N new messages or age (seconds).
     profile_llm_trigger_messages: int = int(
         os.environ.get("MEMORY_PROFILE_LLM_TRIGGER_MESSAGES", "5")
     )
@@ -43,14 +62,14 @@ class MemorySettings:
     )
     split_query_enabled: bool = _b("MEMORY_SPLIT_QUERY_ENABLED", "1")
 
-    # Multi-query coverage CE on raw anchors (formal final path).
-    # Candidate caps only: CE may keep up to 12 anchors, and post-merge Top-k may
-    # keep up to 12 windows. Token budget decides how many are actually injected.
+    # Anchor CE: direct Top-K vs split per-subquery ∪ original fill.
+    # Candidate caps only; token budget decides how many windows are injected.
     rrf_top_k: int = int(os.environ.get("MEMORY_RRF_TOP_K", "40"))
-    anchor_ce_top_k: int = int(os.environ.get("MEMORY_ANCHOR_CE_TOP_K", "12"))
-    anchor_ce_orig_top: int = int(os.environ.get("MEMORY_ANCHOR_CE_ORIG_TOP", "4"))
-    anchor_ce_sub_top: int = int(os.environ.get("MEMORY_ANCHOR_CE_SUB_TOP", "3"))
-    anchor_ce_min_per_query: int = int(os.environ.get("MEMORY_ANCHOR_CE_MIN_PER_QUERY", "1"))
+    anchor_ce_top_k: int = int(os.environ.get("MEMORY_ANCHOR_CE_TOP_K", "10"))
+    anchor_ce_direct_k: int = int(os.environ.get("MEMORY_ANCHOR_CE_DIRECT_K", "10"))
+    anchor_ce_per_subquery_k: int = int(
+        os.environ.get("MEMORY_ANCHOR_CE_PER_SUBQUERY_K", "3")
+    )
     rerank_max_length: int = int(os.environ.get("MEMORY_RERANK_MAX_LENGTH", "1024"))
     rerank_batch_size: int = int(os.environ.get("MEMORY_RERANK_BATCH_SIZE", "16"))
     observability: bool = _b("MEMORY_OBSERVABILITY", "1")
@@ -80,7 +99,7 @@ class MemorySettings:
     anchor_top_k: int = int(
         _env("MEMORY_ANCHOR_TOP_K", "MEMORY_FOCUS_TOP_K", "MEMORY_SEED_TOP_K", default="8")
     )
-    bundle_top_k: int = int(os.environ.get("MEMORY_WINDOW_TOP_K", "12"))
+    bundle_top_k: int = int(os.environ.get("MEMORY_WINDOW_TOP_K", "10"))
     neighbor_before: int = int(os.environ.get("MEMORY_NEIGHBOR_BEFORE", "2"))
     neighbor_after: int = int(os.environ.get("MEMORY_NEIGHBOR_AFTER", "2"))
     bundle_max_messages: int = int(os.environ.get("MEMORY_WINDOW_MAX_MESSAGES", "8"))

@@ -39,7 +39,6 @@ class MemoryEngine:
         self._pipeline.set_llm(llm)
 
     def _parse_profile_command(self, user_text: str) -> Dict[str, str]:
-        """Parse once per user utterance (shared by build_context + ingest)."""
         text = (user_text or "").strip()
         if not text or self._llm is None:
             return {"action": "none"}
@@ -55,8 +54,6 @@ class MemoryEngine:
     @property
     def last_trace(self) -> Optional[RetrievalTrace]:
         return self._last_trace
-
-    # --- write path ---------------------------------------------------------
 
     def ingest_message(
         self,
@@ -83,34 +80,27 @@ class MemoryEngine:
                     created_at=int(created_at),
                 )
             )
-            if mem_cfg.profile_enabled and role == "user" and self._llm is not None:
+            if (
+                mem_cfg.profile_enabled
+                and role == "user"
+                and mem_cfg.profile_llm_propose
+                and self._llm is not None
+            ):
                 try:
-                    cmd = self._parse_profile_command(content)
-                    self._profile.maybe_handle_user_command(
+                    recent = self._store.list_recent_messages(int(user_id), limit=9)
+                    token_counter = getattr(self._llm, "count_tokens", None)
+                    changes = self._profile.maintain_from_user_turn(
                         user_id=int(user_id),
-                        user_text=content,
-                        source_message_id=int(message_id),
+                        current_user_message_id=int(message_id),
+                        recent_turns=recent,
                         llm=self._llm,
-                        parsed=cmd,
+                        token_counter=token_counter,
                     )
+                    summary = changes.summary()
+                    if summary and mem_cfg.observability:
+                        logger.info("memory_profile %s", summary)
                 except Exception:
-                    logger.warning("profile command parse failed", exc_info=True)
-            if mem_cfg.profile_enabled and role in ("user", "assistant"):
-                if mem_cfg.profile_llm_propose:
-                    self._profile.note_message_for_llm_propose(int(user_id))
-            if mem_cfg.profile_enabled and role == "assistant":
-                # Batch-gated LLM extract → active (allowlisted long-term facts only).
-                if mem_cfg.profile_llm_propose and self._llm is not None:
-                    try:
-                        recent = self._store.list_recent_messages(int(user_id), limit=8)
-                        self._profile.maybe_llm_extract(
-                            user_id=int(user_id),
-                            llm=self._llm,
-                            recent_turns=recent,
-                            source_message_id=int(message_id),
-                        )
-                    except Exception:
-                        logger.warning("profile LLM extract failed", exc_info=True)
+                    logger.warning("profile maintain failed", exc_info=True)
             try:
                 self._ingestor.process_embed_retries(limit=10)
             except Exception:
@@ -119,8 +109,6 @@ class MemoryEngine:
         except Exception:
             logger.warning("memory ingest failed message_id=%s", message_id, exc_info=True)
             return 0
-
-    # --- read path ----------------------------------------------------------
 
     def build_context(
         self,
@@ -136,7 +124,6 @@ class MemoryEngine:
         if not mem_cfg.store_enabled:
             return ""
 
-        # reserved for callers / future session-scoped filters
         del recent_messages, conversation_summary, conversation_id
 
         try:
@@ -151,11 +138,17 @@ class MemoryEngine:
                 except Exception:
                     logger.warning("profile inspect parse failed", exc_info=True)
 
-            windows, profiles, trace = self._pipeline.run(
+            windows, trace = self._pipeline.run(
                 user_id=user_id,
                 query=query,
                 exclude_message_ids=exclude_message_ids,
             )
+            profiles = (
+                self._profile.list_all_for_context(user_id=user_id)
+                if mem_cfg.profile_enabled
+                else []
+            )
+            trace.profile_hits = len(profiles)
             trace.enough = is_enough(windows, profiles)
 
             budget = int(token_budget or mem_cfg.context_token_budget)
@@ -167,7 +160,6 @@ class MemoryEngine:
                 token_counter=counter,
                 query=query,
             )
-            # selected_bundles = windows actually packed into the prompt.
             trace.selected_bundles = packed_count
             trace.extra["packed_window_count"] = packed_count
             trace.extra["topk_before_budget"] = len(windows)
@@ -186,16 +178,13 @@ class MemoryEngine:
             return ""
 
     def _inspect_block(self, user_id: int) -> str:
-        info = handle_inspect(repo=self._store, profile=self._profile, user_id=user_id)
-        prefs = info.get("support_preferences") or []
-        lines = ["[长期画像]"]
-        if prefs:
-            lines.extend(f"- {p.get('content')}" for p in prefs)
-        else:
-            lines.append("- （暂无长期画像条目）")
-        return "<memory>\n" + "\n".join(lines) + "\n</memory>"
+        from product_app.app.memory.context.profile_formatter import render_user_profile
 
-    # --- profile helpers ----------------------------------------------------
+        profiles = self._profile.list_all_for_context(user_id=user_id)
+        block = render_user_profile(profiles)
+        if block:
+            return block
+        return "<user_profile>\n（暂无长期画像条目）\n</user_profile>"
 
     def remember_explicit(self, *, user_id: int, content: str, source_message_ids: List[int]):
         return handle_remember(

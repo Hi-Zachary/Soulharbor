@@ -6,18 +6,18 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
-from product_app.app.memory.profile.schema import allowed_prompt_block, normalize_fact
+from product_app.app.memory.profile.schema import example_prompt_block, normalize_fact
 
 logger = logging.getLogger(__name__)
 
 COMMAND_SYSTEM = f"""\
 你是 SoulHarbor 的画像指令解析助手。
 
-根据用户本轮话，判断是否在主动操作长期画像。只允许白名单字段：
-{allowed_prompt_block()}
+根据用户本轮话，判断是否在主动操作长期画像。
+{example_prompt_block()}
 
 可能的 action：
-- remember：用户明确要求记住某条长期信息（须能落到白名单 tag/feature/value）
+- remember：用户明确要求记住某条可确认的长期信息（给出 tag/feature/value）
 - forget：用户明确要求忘掉某条信息（给出 query 匹配子串，或 tag+feature）
 - correct：用户要求把旧信息改成新信息
 - inspect：用户要查看当前记住了什么
@@ -25,8 +25,8 @@ COMMAND_SYSTEM = f"""\
 
 规则：
 1. 禁止写入诊断、人格标签、瞬时情绪、单次事件。
-2. remember/correct 的 tag/feature 必须在白名单内；否则 action=none。
-3. 拿不准 → none。
+2. remember/correct 必须有可核对的长期 value；拿不准 → none。
+3. 不要把一时情绪或单次事件写成长期画像。
 
 只输出一行 JSON，例如：
 {{"action":"remember","tag":"identity","feature":"name","value":"小王","query":""}}

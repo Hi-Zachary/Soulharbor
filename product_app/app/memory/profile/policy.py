@@ -17,7 +17,7 @@ class ProfilePolicy:
         if origin not in ("extracted", "explicit"):
             return False, "bad_origin"
         if not is_allowed(fact.tag, fact.feature):
-            return False, "not_allowlisted"
+            return False, "bad_slug"
         value = (fact.value or "").strip()
         if not value:
             return False, "empty"
@@ -39,18 +39,16 @@ class ProfilePolicy:
         origin: str,
         source_messages: Sequence[str],
     ) -> tuple[bool, str]:
-        """Legacy free-text path: accept only if content encodes an allowlisted fact."""
+        """Legacy free-text path: accept structured `[tag/feature] …` facts."""
         text = (content or "").strip()
         if not text:
             return False, "empty"
-        # Prefer `[tag/feature] label：value`
         from product_app.app.memory.profile.schema import parse_content_key
 
         key = parse_content_key(text)
         if not key:
             return False, "not_structured"
         tag, feature = key
-        # value after "：" or ":"
         value = text
         for sep in ("：", ":"):
             if sep in text:
@@ -58,7 +56,7 @@ class ProfilePolicy:
                 break
         fact = normalize_fact(tag=tag, feature=feature, value=value)
         if not fact:
-            return False, "not_allowlisted"
+            return False, "bad_fact"
         return self.validate_fact(
             fact=fact, origin=origin, source_messages=source_messages or [value]
         )

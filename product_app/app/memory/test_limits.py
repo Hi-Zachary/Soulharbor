@@ -13,7 +13,11 @@ from product_app.app.memory.context.formatter import _date_label, current_date_l
 from product_app.app.memory.models import Block, RankedHit, Span, SpanTurn
 from product_app.app.memory.store.lexical_search import LexicalSearcher
 from product_app.app.memory.store.merge import merge_windows
-from product_app.app.memory.store.rerank import _take_unique_messages
+from product_app.app.memory.store.rerank import (
+    _select_direct,
+    _select_split,
+    _take_unique_messages,
+)
 
 
 def _turn(
@@ -101,18 +105,23 @@ def _hit(mid: int, content: str, *, role: str = "user", fused: float = 0.0) -> R
 
 
 class DefaultLimitTests(unittest.TestCase):
-    def test_default_limits_are_twelve(self) -> None:
-        saved = {
-            key: os.environ.pop(key)
-            for key in ("MEMORY_ANCHOR_CE_TOP_K", "MEMORY_WINDOW_TOP_K")
-            if key in os.environ
-        }
+    def test_default_limits_are_ten(self) -> None:
+        keys = (
+            "MEMORY_ANCHOR_CE_TOP_K",
+            "MEMORY_ANCHOR_CE_DIRECT_K",
+            "MEMORY_ANCHOR_CE_PER_SUBQUERY_K",
+            "MEMORY_WINDOW_TOP_K",
+        )
+        saved = {key: os.environ.pop(key) for key in keys if key in os.environ}
         try:
             import product_app.app.memory.config as config_mod
 
             config_mod = importlib.reload(config_mod)
-            self.assertEqual(config_mod.mem_cfg.anchor_ce_top_k, 12)
-            self.assertEqual(config_mod.mem_cfg.bundle_top_k, 12)
+            self.assertEqual(config_mod.mem_cfg.anchor_ce_top_k, 10)
+            self.assertEqual(config_mod.mem_cfg.anchor_ce_direct_k, 10)
+            self.assertEqual(config_mod.mem_cfg.anchor_ce_per_subquery_k, 3)
+            self.assertEqual(config_mod.mem_cfg.bundle_top_k, 10)
+            self.assertFalse(hasattr(config_mod.mem_cfg, "anchor_ce_orig_top"))
         finally:
             os.environ.update(saved)
             import product_app.app.memory.config as config_mod
@@ -120,13 +129,61 @@ class DefaultLimitTests(unittest.TestCase):
             importlib.reload(config_mod)
 
 
+class AnchorCeSelectTests(unittest.TestCase):
+    def test_select_direct_dedupes_message_id(self) -> None:
+        anchors = [
+            _hit(1, "a0", fused=0.1),
+            _hit(1, "a1", fused=0.2),
+            _hit(2, "b", fused=0.3),
+            _hit(3, "c", fused=0.4),
+        ]
+        scores = [0.9, 0.95, 0.8, 0.7]
+        picked = _select_direct(anchors, scores, limit=2)
+        self.assertEqual([h.message_id for h in picked], [1, 2])
+        self.assertEqual(picked[0].content, "a1")
+        self.assertAlmostEqual(picked[0].rerank_score, 0.95)
+
+    def test_select_split_union_then_fill_from_original(self) -> None:
+        # 10 distinct messages; three subqueries each take top-3 with overlap.
+        anchors = [_hit(i, f"m{i}") for i in range(1, 11)]
+        # original prefers high ids
+        original = [0.10 * i for i in range(1, 11)]
+        # A: 1,2,3  B: 2,4,5  C: 6,7,8
+        sub_a = [0.9, 0.8, 0.7, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+        sub_b = [0.1, 0.85, 0.1, 0.8, 0.75, 0.1, 0.1, 0.1, 0.1, 0.1]
+        sub_c = [0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0.8, 0.7, 0.1, 0.1]
+        picked = _select_split(
+            anchors,
+            [original, sub_a, sub_b, sub_c],
+            per_subquery=3,
+            limit=10,
+        )
+        mids = {h.message_id for h in picked}
+        self.assertEqual(mids, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+        self.assertEqual(len(picked), 10)
+
+    def test_select_split_does_not_pad_beyond_available(self) -> None:
+        anchors = [_hit(i, f"m{i}") for i in range(1, 7)]
+        original = [0.1] * 6
+        sub_a = [0.9, 0.8, 0.7, 0.0, 0.0, 0.0]
+        sub_b = [0.0, 0.0, 0.0, 0.9, 0.8, 0.7]
+        picked = _select_split(
+            anchors,
+            [original, sub_a, sub_b],
+            per_subquery=3,
+            limit=10,
+        )
+        self.assertEqual(len(picked), 6)
+        self.assertEqual({h.message_id for h in picked}, set(range(1, 7)))
+
+
 class BudgetPackTests(unittest.TestCase):
-    def test_budget_can_pack_fewer_than_twelve(self) -> None:
-        windows = _make_windows(12)
+    def test_budget_can_pack_fewer_than_ten(self) -> None:
+        windows = _make_windows(10)
 
         def counter(text: str) -> int:
             cost = 40
-            for i in range(12):
+            for i in range(10):
                 if f"WINDOW_w{i}_" in text:
                     cost += 250
             return cost
@@ -138,7 +195,7 @@ class BudgetPackTests(unittest.TestCase):
             token_counter=counter,
             query="test",
         )
-        self.assertLess(len(packed), 12)
+        self.assertLess(len(packed), 10)
         self.assertGreaterEqual(len(packed), 1)
 
     def test_budget_skips_oversized_window_and_continues(self) -> None:

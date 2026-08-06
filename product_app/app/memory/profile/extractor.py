@@ -1,4 +1,4 @@
-"""LLM extractor for strict long-term profile facts (direct write, empty OK)."""
+"""LLM extractor for long-term profile facts (direct write, empty OK)."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from product_app.app.memory.profile.schema import (
     ProfileFact,
-    allowed_prompt_block,
+    example_prompt_block,
     is_allowed,
     normalize_fact,
 )
@@ -18,14 +18,13 @@ logger = logging.getLogger(__name__)
 EXTRACTOR_SYSTEM = f"""\
 你是 SoulHarbor 的长期画像抽取助手。
 
-任务：从最近对话中，抽出用户明确说过的、跨会话仍成立的长期信息。
-只允许下列 tag/feature（白名单之外一律不抽）：
-{allowed_prompt_block()}
+任务：从最近对话中，抽出用户明确说过的、跨会话仍成立、且能被用户原话核对的长期信息。
+{example_prompt_block()}
 
 规则：
-1. 必须有用户自己明确说过的依据；禁止从助理话术或氛围推断。
+1. 必须有用户自己明确说过的依据，不要自行推断。
 2. 禁止诊断、人格标签、瞬时情绪、单次事件、猜测。
-3. 不确定、证据不足、或只是闲聊 → 返回空命令列表。
+3. 如果用户消息中只是闲聊，或者没有确定性的长期画像信息，请返回空命令列表，无需硬凑。
 4. value 用简短中文（≤40 字），原子、可核对；evidence 须是摘自用户原话的短引语。
 5. 同一 tag/feature 最多一条；已有相同事实勿重复 add。
 6. 仅当用户明确否定或要求忘掉某条长期信息时才用 delete。
@@ -54,7 +53,7 @@ def extract_from_recent(
     existing: Sequence[str],
     max_items: int = 3,
 ) -> List[Dict[str, str]]:
-    """Return schema-filtered command dicts."""
+    """Return structurally filtered command dicts."""
     if llm is None or not recent_turns:
         return []
     lines = []
@@ -71,7 +70,7 @@ def extract_from_recent(
     user_prompt = (
         f"已有画像（勿重复 add）：{existing_txt}\n\n"
         f"最近对话：\n" + "\n".join(lines) + "\n\n"
-        "仅输出白名单内的长期事实；没有则 commands 为空。"
+        "仅输出可确认的长期事实；没有则 commands 为空。"
     )
     try:
         raw = llm.generate_structured(
@@ -108,8 +107,6 @@ def _parse_commands(raw: str, *, max_items: int) -> List[Dict[str, str]]:
         feature = str(c.get("feature") or "").strip().lower()
         value = str(c.get("value") or "").strip()
         evidence = str(c.get("evidence") or "").strip()
-        if not is_allowed(tag, feature):
-            continue
         if command == "add":
             fact = normalize_fact(tag=tag, feature=feature, value=value)
             if not fact:
@@ -124,6 +121,8 @@ def _parse_commands(raw: str, *, max_items: int) -> List[Dict[str, str]]:
                 }
             )
         else:
+            if not is_allowed(tag, feature):
+                continue
             out.append(
                 {
                     "command": "delete",

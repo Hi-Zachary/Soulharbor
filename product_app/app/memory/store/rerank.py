@@ -1,4 +1,4 @@
-"""Raw-anchor cross-encoder selection (multi-query coverage) before Adaptive Stitch."""
+"""Raw-anchor cross-encoder selection (direct / split) before Adaptive Stitch."""
 from __future__ import annotations
 
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _ce_query_set(original: str, planner_queries: Optional[Sequence[str]]) -> List[str]:
-    """Always keep the raw user query; add unique Planner rewrites / subqueries."""
+    """Always keep the raw user query; add unique Planner subqueries (≤3)."""
     out: List[str] = []
     seen: Set[str] = set()
 
@@ -30,7 +30,7 @@ def _ce_query_set(original: str, planner_queries: Optional[Sequence[str]]) -> Li
         out.append(q)
 
     _add(original)
-    for pq in planner_queries or []:
+    for pq in list(planner_queries or [])[:3]:
         _add(str(pq))
     return out
 
@@ -73,93 +73,101 @@ def _take_unique_messages(
     return selected
 
 
-def _coverage_select_anchors(
+def _select_direct(
+    anchors: List[RankedHit],
+    scores: List[float],
+    *,
+    limit: int = 10,
+) -> List[RankedHit]:
+    """Original-query CE Top-K, unique by message_id."""
+    if not anchors or limit <= 0:
+        return []
+    ranked_indices = sorted(
+        range(len(anchors)),
+        key=lambda i: float(scores[i]),
+        reverse=True,
+    )
+    selected: List[RankedHit] = []
+    seen_message_ids: Set[int] = set()
+    for index in ranked_indices:
+        hit = anchors[index]
+        if hit.message_id in seen_message_ids:
+            continue
+        hit.rerank_score = float(scores[index])
+        selected.append(hit)
+        seen_message_ids.add(hit.message_id)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _select_split(
     anchors: List[RankedHit],
     score_matrix: List[List[float]],
     *,
-    keep: int,
-    orig_top: int,
-    sub_top: int,
-    min_per_query: int,
+    per_subquery: int = 3,
+    limit: int = 10,
 ) -> List[RankedHit]:
     """
-    Coverage-aware CE seed pick:
-    original top-`orig_top` ∪ each subquery top-`sub_top`, then fill/truncate by s_max.
+    Per-subquery CE Top-K ∪ fill from original-query CE to ``limit``.
+
+    score_matrix[0] = original query; score_matrix[1:] = up to 3 subqueries.
+    Final rerank_score = max CE across all queries for that chunk.
     """
-    n = len(anchors)
-    if n == 0 or keep <= 0 or not score_matrix:
+    if not anchors or not score_matrix or limit <= 0:
         return []
-    n_q = len(score_matrix)
-    s_max = [max(float(score_matrix[j][i]) for j in range(n_q)) for i in range(n)]
-    for i, anchor in enumerate(anchors):
-        anchor.rerank_score = float(s_max[i])
 
-    selected: List[int] = []
-    seen_indices: Set[int] = set()
-    seen_message_ids: Set[int] = set()
+    original_scores = score_matrix[0]
+    subquery_scores = score_matrix[1:]
 
-    def _take(scores: List[float], k: int) -> None:
-        if k <= 0:
-            return
-        order = sorted(range(n), key=lambda i: float(scores[i]), reverse=True)
-        added = 0
-        for index in order:
+    def best_indices_for_scores(scores: List[float]) -> List[int]:
+        best_by_message: Dict[int, int] = {}
+        for index, hit in enumerate(anchors):
+            previous = best_by_message.get(hit.message_id)
+            if previous is None or float(scores[index]) > float(scores[previous]):
+                best_by_message[hit.message_id] = index
+        return sorted(
+            best_by_message.values(),
+            key=lambda i: float(scores[i]),
+            reverse=True,
+        )
+
+    selected_by_message: Dict[int, int] = {}
+
+    for scores in subquery_scores:
+        ranked = best_indices_for_scores(scores)
+        for index in ranked[: max(0, int(per_subquery))]:
             message_id = anchors[index].message_id
-            if index in seen_indices:
+            previous = selected_by_message.get(message_id)
+            if previous is None:
+                selected_by_message[message_id] = index
                 continue
-            if message_id in seen_message_ids:
-                continue
-            selected.append(index)
-            seen_indices.add(index)
-            seen_message_ids.add(message_id)
-            added += 1
-            if added >= k:
-                break
+            previous_max = max(float(row[previous]) for row in score_matrix)
+            current_max = max(float(row[index]) for row in score_matrix)
+            if current_max > previous_max:
+                selected_by_message[message_id] = index
 
-    _take(score_matrix[0], int(orig_top))
-    for j in range(1, n_q):
-        _take(score_matrix[j], int(sub_top))
+    for index in best_indices_for_scores(original_scores):
+        if len(selected_by_message) >= limit:
+            break
+        message_id = anchors[index].message_id
+        if message_id in selected_by_message:
+            continue
+        selected_by_message[message_id] = index
 
-    if len(selected) < keep:
-        order = sorted(range(n), key=lambda i: s_max[i], reverse=True)
-        for index in order:
-            if len(selected) >= keep:
-                break
-            message_id = anchors[index].message_id
-            if index in seen_indices:
-                continue
-            if message_id in seen_message_ids:
-                continue
-            selected.append(index)
-            seen_indices.add(index)
-            seen_message_ids.add(message_id)
+    selected_indices = list(selected_by_message.values())
+    for index in selected_indices:
+        anchors[index].rerank_score = max(float(row[index]) for row in score_matrix)
 
-    if len(selected) > keep:
-        guaranteed: Set[int] = set()
-        floor = max(1, int(min_per_query))
-        for j in range(n_q):
-            order = sorted(
-                selected, key=lambda i: float(score_matrix[j][i]), reverse=True
-            )
-            for i in order[:floor]:
-                guaranteed.add(i)
-        if len(guaranteed) >= keep:
-            selected = sorted(guaranteed, key=lambda i: s_max[i], reverse=True)[:keep]
-        else:
-            rest = [i for i in selected if i not in guaranteed]
-            rest.sort(key=lambda i: s_max[i], reverse=True)
-            selected = list(guaranteed)
-            for i in rest:
-                if len(selected) >= keep:
-                    break
-                selected.append(i)
-
-    selected.sort(key=lambda i: s_max[i], reverse=True)
-    return [anchors[i] for i in selected]
+    selected_indices.sort(
+        key=lambda i: float(anchors[i].rerank_score),
+        reverse=True,
+    )
+    return [anchors[index] for index in selected_indices[:limit]]
 
 
 class AnchorCrossEncoder:
-    """Shared BGE-reranker for raw-anchor multi-query coverage selection."""
+    """Shared BGE-reranker for raw-anchor direct / split CE selection."""
 
     _lock = threading.Lock()
     _shared_model = None
@@ -179,52 +187,44 @@ class AnchorCrossEncoder:
         keep: int | None = None,
     ) -> List[RankedHit]:
         """
-        Score RRF candidates with CE(q_j, text(a)) for q_j in
-        {original} ∪ planner queries; keep coverage-selected top-K.
-        Writes s_max onto each returned hit as rerank_score.
+        Score RRF candidates with CE.
+
+        - Direct (no planner_queries): original-query Top-K by message_id.
+        - Split: each subquery Top-`per_subquery`, union, fill from original CE.
         """
         if not anchors:
             return []
-        top_n = int(keep if keep is not None else mem_cfg.anchor_ce_top_k)
-        queries = _ce_query_set(original_query, planner_queries)
-        if not queries or top_n <= 0:
-            return _take_unique_messages(anchors, top_n)
+        subs = [str(q).strip() for q in (planner_queries or []) if str(q).strip()][:3]
+        queries = _ce_query_set(original_query, subs)
+        if not queries:
+            return []
 
         texts = [(a.content or "").strip() for a in anchors]
         try:
             score_matrix = [self._score_text_pairs(q, texts) for q in queries]
         except Exception:
             logger.warning("raw-anchor cross-encoder scoring failed", exc_info=True)
-            return _take_unique_messages(anchors, top_n)
-
-        if len(queries) == 1:
-            scores = score_matrix[0]
-            for i, anchor in enumerate(anchors):
-                anchor.rerank_score = float(scores[i])
-            order = sorted(
-                range(len(anchors)),
-                key=lambda i: float(scores[i]),
-                reverse=True,
+            fallback_k = int(
+                keep
+                if keep is not None
+                else (
+                    mem_cfg.anchor_ce_top_k
+                    if subs
+                    else mem_cfg.anchor_ce_direct_k
+                )
             )
-            picked: List[RankedHit] = []
-            seen_message_ids: Set[int] = set()
-            for i in order:
-                mid = anchors[i].message_id
-                if mid in seen_message_ids:
-                    continue
-                picked.append(anchors[i])
-                seen_message_ids.add(mid)
-                if len(picked) >= top_n:
-                    break
-            return picked
+            return _take_unique_messages(anchors, fallback_k)
 
-        return _coverage_select_anchors(
+        if not subs:
+            limit = int(keep if keep is not None else mem_cfg.anchor_ce_direct_k)
+            return _select_direct(anchors, score_matrix[0], limit=limit)
+
+        limit = int(keep if keep is not None else mem_cfg.anchor_ce_top_k)
+        return _select_split(
             anchors,
             score_matrix,
-            keep=top_n,
-            orig_top=int(mem_cfg.anchor_ce_orig_top),
-            sub_top=int(mem_cfg.anchor_ce_sub_top),
-            min_per_query=int(mem_cfg.anchor_ce_min_per_query),
+            per_subquery=int(mem_cfg.anchor_ce_per_subquery_k),
+            limit=limit,
         )
 
     def _score_text_pairs(self, query: str, passages: List[str]) -> List[float]:

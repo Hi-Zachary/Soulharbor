@@ -380,8 +380,8 @@ def format_sections(
     query: str = "",
     embedder: Optional[MemoryEmbedder] = None,
 ) -> List[str]:
-    # No evidence → no <memory> block (avoids injecting a date-only shell).
-    if not bundles and not profiles:
+    # No episodic evidence → empty (profiles injected separately as <user_profile>).
+    if not bundles:
         return []
 
     parts: List[str] = [f"当前日期：{current_date_label()}。"]
@@ -415,14 +415,6 @@ def format_sections(
                 )
             )
             parts.append("")
-
-    if profiles:
-        parts.append("[长期画像]")
-        for item in profiles:
-            parts.append(f"- {item.content}")
-            if item.source_message_ids:
-                parts.append(f"  来源：message={item.source_message_ids[0]}")
-        parts.append("")
 
     while parts and parts[-1] == "":
         parts.pop()
