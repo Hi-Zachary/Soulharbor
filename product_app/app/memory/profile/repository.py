@@ -211,9 +211,14 @@ class ProfileStore:
         )
         if int(cur.rowcount or 0) != 1:
             return False
+        # Sources describe the *current* content only; replace, don't accumulate.
+        conn.execute(
+            "DELETE FROM support_profile_sources WHERE profile_id = ?",
+            (profile_id,),
+        )
         conn.execute(
             """
-            INSERT OR IGNORE INTO support_profile_sources(profile_id, message_id)
+            INSERT INTO support_profile_sources(profile_id, message_id)
             VALUES (?, ?)
             """,
             (profile_id, int(source_message_id)),

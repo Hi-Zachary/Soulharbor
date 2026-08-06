@@ -423,20 +423,22 @@ class ProfileMaintainTests(unittest.TestCase):
             handle_forget(repo=store, profile=svc, user_id=1, message_id=7)
             self.assertEqual(len(svc.list_all_for_context(user_id=1)), 0)
 
-    def test_forget_message_keeps_multi_source(self):
+    def test_update_replaces_sources(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "p.db"
             store = TraceStore(db)
             store.init()
             svc = ProfileService(db)
-            _seed_user_msg(store, user_id=1, message_id=1, content="我叫小王")
-            _seed_user_msg(store, user_id=1, message_id=2, content="还是叫小王")
+            _seed_user_msg(store, user_id=1, message_id=1, content="我正在考虑转计算机")
+            _seed_user_msg(store, user_id=1, message_id=2, content="我已经正式转进计算机了")
             svc._db.apply_profile_operations(
                 user_id=1,
                 current_user_message_id=1,
                 operations=[
                     ProfileOperation(
-                        op="add", target_id="", content="用户希望被称为小王"
+                        op="add",
+                        target_id="",
+                        content="用户计划转入计算机科学专业",
                     )
                 ],
                 max_active=20,
@@ -453,7 +455,7 @@ class ProfileMaintainTests(unittest.TestCase):
                     ProfileOperation(
                         op="update",
                         target_id=pid,
-                        content="用户希望在对话中被称为小王",
+                        content="用户目前就读计算机科学专业",
                     )
                 ],
                 max_active=20,
@@ -463,14 +465,53 @@ class ProfileMaintainTests(unittest.TestCase):
                 max_tokens=48,
             )
             sources = svc.list_all_for_context(user_id=1)[0].source_message_ids
-            self.assertEqual(sorted(sources), [1, 2])
+            self.assertEqual(sources, [2])
+
+    def test_forget_update_source_deletes_updated_profile(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "p.db"
+            store = TraceStore(db)
+            store.init()
+            svc = ProfileService(db)
+            _seed_user_msg(store, user_id=1, message_id=1, content="我正在考虑转计算机")
+            _seed_user_msg(store, user_id=1, message_id=2, content="我已经正式转进计算机了")
+            svc._db.apply_profile_operations(
+                user_id=1,
+                current_user_message_id=1,
+                operations=[
+                    ProfileOperation(
+                        op="add",
+                        target_id="",
+                        content="用户计划转入计算机科学专业",
+                    )
+                ],
+                max_active=20,
+                max_block_tokens=640,
+                max_operations=1,
+                max_chars=64,
+                max_tokens=48,
+            )
+            pid = svc.list_all_for_context(user_id=1)[0].id
+            svc._db.apply_profile_operations(
+                user_id=1,
+                current_user_message_id=2,
+                operations=[
+                    ProfileOperation(
+                        op="update",
+                        target_id=pid,
+                        content="用户目前就读计算机科学专业",
+                    )
+                ],
+                max_active=20,
+                max_block_tokens=640,
+                max_operations=1,
+                max_chars=64,
+                max_tokens=48,
+            )
             from product_app.app.memory.commands.forget import handle_forget
 
-            handle_forget(repo=store, profile=svc, user_id=1, message_id=1)
-            left = svc.list_all_for_context(user_id=1)
-            self.assertEqual(len(left), 1)
-            self.assertEqual(left[0].source_message_ids, [2])
-            self.assertIn("小王", left[0].content)
+            handle_forget(repo=store, profile=svc, user_id=1, message_id=2)
+            self.assertEqual(len(svc.list_all_for_context(user_id=1)), 0)
 
     def test_no_commands_llm_module(self):
         with self.assertRaises(ModuleNotFoundError):
